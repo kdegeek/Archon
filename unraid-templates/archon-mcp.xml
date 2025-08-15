@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Archon-MCP</Name>
+  <Repository>kdegeek/archon-mcp:latest</Repository>
+  <Registry>https://hub.docker.com/r/kdegeek/archon-mcp/</Registry>
+  <Network>archon-net</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/coleam00/archon/discussions/</Support>
+  <Project>https://github.com/coleam00/archon/</Project>
+  <Overview>This is the MCP (Model Context Protocol) server for Archon. It provides a lightweight interface for AI clients to connect to Archon.&#xD;
+&#xD;
+You must create a custom docker network named 'archon-net' for the Archon containers to communicate.
+  </Overview>
+  <Category>Cloud;</Category>
+  <WebUI>http://[IP]:[PORT:8051]</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/coleam00/archon/main/archon-ui-main/public/archon-main-graphic.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled>1630224000</DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="MCP Port" Target="8051" Default="8051" Mode="tcp" Description="Port for the MCP server" Type="Port" Display="always" Required="true" Mask="false">8051</Config>
+  <Config Name="Supabase URL" Target="SUPABASE_URL" Default="" Description="Your Supabase project URL." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Supabase Service Key" Target="SUPABASE_SERVICE_KEY" Default="" Description="Your Supabase service key." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Logfire Token" Target="LOGFIRE_TOKEN" Default="" Description="Your Logfire token for logging." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO" Description="Set the log level for the application." Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+  <Config Name="API Service URL" Target="API_SERVICE_URL" Default="http://Archon-Server:8181" Description="URL for the Archon Server service." Type="Variable" Display="advanced" Required="true" Mask="false">http://Archon-Server:8181</Config>
+  <Config Name="Agents Service URL" Target="AGENTS_SERVICE_URL" Default="http://Archon-Agents:8052" Description="URL for the Archon Agents service." Type="Variable" Display="advanced" Required="true" Mask="false">http://Archon-Agents:8052</Config>
+</Container>
