@@ -257,6 +257,35 @@ After changing hostname or ports:
 2. Access the UI at: `http://${HOST}:${ARCHON_UI_PORT}`
 3. Update your AI client configuration with the new hostname and MCP port
 
+## 🚀 Production Deployment
+
+This project is ready for production deployment using Docker. The provided `docker-compose.prod.yml` file can be used to build and run the services in a production environment.
+
+For detailed instructions on how to build the Docker images and push them to a container registry like Docker Hub, please see the [Deployment Guide](DEPLOYMENT.md).
+
+### Unraid Deployment
+
+This repository includes templates for deploying Archon on Unraid. To use them:
+
+1.  **Create a Custom Docker Network**:
+    - In your Unraid terminal, run the following command to create a network for the Archon services to communicate with each other:
+      ```bash
+      docker network create archon-net
+      ```
+
+2.  **Copy Templates to Unraid**:
+    - Copy the contents of the `unraid-templates` directory from this repository to the `templates` directory on your Unraid `flash` drive.
+
+3.  **Install the Templates**:
+    - In the Unraid web UI, go to the "Docker" tab.
+    - Click on "Add Container" and select one of the Archon templates from the "My Templates" dropdown (e.g., `Archon-Server`).
+    - Review the configuration and fill in all the required environment variables (Supabase URL/key, API keys, etc.).
+    - Click "Apply" to install the container.
+    - Repeat this process for all four Archon services: `Archon-Server`, `Archon-MCP`, `Archon-Agents`, and `Archon-UI`.
+
+4.  **Access the UI**:
+    - Once all containers are running, you can access the Archon UI at `http://<your-unraid-ip>:<your-ui-port>`.
+
 ## 🔧 Development
 
 For development with hot reload:

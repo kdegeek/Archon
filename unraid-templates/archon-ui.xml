@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Archon-UI</Name>
+  <Repository>kdegeek/archon-ui:latest</Repository>
+  <Registry>https://hub.docker.com/r/kdegeek/archon-ui/</Registry>
+  <Network>archon-net</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/coleam00/archon/discussions/</Support>
+  <Project>https://github.com/coleam00/archon/</Project>
+  <Overview>This is the user interface for Archon. It is a React-based single-page application served by Nginx.&#xD;
+&#xD;
+You must create a custom docker network named 'archon-net' for the Archon containers to communicate.
+  </Overview>
+  <Category>Cloud;</Category>
+  <WebUI>http://[IP]:[PORT:3737]</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/coleam00/archon/main/archon-ui-main/public/archon-main-graphic.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled>1630224000</DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="UI Port" Target="80" Default="3737" Mode="tcp" Description="Port for the user interface" Type="Port" Display="always" Required="true" Mask="false">3737</Config>
+  <Config Name="API URL" Target="VITE_API_URL" Default="http://[IP]:8181" Description="URL for the Archon Server API. Replace [IP] with your Unraid server's IP address." Type="Variable" Display="always" Required="true" Mask="false"/>
+</Container>
