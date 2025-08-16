@@ -1,0 +1,202 @@
+version: '3.9'
+
+services:
+  archon-server:
+    image: ghcr.io/archon/archon-server:latest
+    container_name: archon-server
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-8181}:8181"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LOGFIRE_TOKEN=${LOGFIRE_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/New_York}
+      - MAX_WORKERS=${MAX_WORKERS:-4}
+      - ENABLE_PROJECTS=${ENABLE_PROJECTS:-true}
+    volumes:
+      - /mnt/user/appdata/archon/server:/appdata
+      - /mnt/user/archon-data:/data
+      - /mnt/user/appdata/archon/logs/server:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8181/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - archon-network
+    user: "${PUID:-99}:${PGID:-100}"
+    mem_limit: ${SERVER_MEMORY_LIMIT:-2G}
+    cpus: ${SERVER_CPU_LIMIT:-2}
+    # Deploy blocks are ignored by Docker Compose - use mem_limit/cpus instead
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '${SERVER_CPU_LIMIT:-2}'
+    #       memory: ${SERVER_MEMORY_LIMIT:-2G}
+    #     reservations:
+    #       cpus: '${SERVER_CPU_RESERVE:-0.5}'
+    #       memory: ${SERVER_MEMORY_RESERVE:-512M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  archon-mcp:
+    image: ghcr.io/archon/archon-mcp:latest
+    container_name: archon-mcp
+    restart: unless-stopped
+    ports:
+      - "${MCP_PORT:-8051}:8051"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - /mnt/user/appdata/archon/mcp:/appdata
+      - /mnt/user/archon-data:/data
+      - /mnt/user/appdata/archon/logs/mcp:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8051/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - archon-network
+    depends_on:
+      - archon-server
+    user: "${PUID:-99}:${PGID:-100}"
+    mem_limit: ${MCP_MEMORY_LIMIT:-1G}
+    cpus: ${MCP_CPU_LIMIT:-1}
+    # Deploy blocks are ignored by Docker Compose - use mem_limit/cpus instead
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '${MCP_CPU_LIMIT:-1}'
+    #       memory: ${MCP_MEMORY_LIMIT:-1G}
+    #     reservations:
+    #       cpus: '${MCP_CPU_RESERVE:-0.25}'
+    #       memory: ${MCP_MEMORY_RESERVE:-256M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  archon-agents:
+    image: ghcr.io/archon/archon-agents:latest
+    container_name: archon-agents
+    restart: unless-stopped
+    ports:
+      - "${AGENTS_PORT:-8052}:8052"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/New_York}
+      # GPU support (uncomment if needed)
+      # - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+    volumes:
+      - /mnt/user/appdata/archon/agents:/appdata
+      - /mnt/user/archon-data:/data
+      - /mnt/user/appdata/archon/logs/agents:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8052/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - archon-network
+    depends_on:
+      - archon-server
+    user: "${PUID:-99}:${PGID:-100}"
+    # GPU support (uncomment if needed)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    mem_limit: ${AGENTS_MEMORY_LIMIT:-2G}
+    cpus: ${AGENTS_CPU_LIMIT:-2}
+    # Deploy blocks are ignored by Docker Compose - use mem_limit/cpus instead
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '${AGENTS_CPU_LIMIT:-2}'
+    #       memory: ${AGENTS_MEMORY_LIMIT:-2G}
+    #     reservations:
+    #       cpus: '${AGENTS_CPU_RESERVE:-0.5}'
+    #       memory: ${AGENTS_MEMORY_RESERVE:-512M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  archon-frontend:
+    image: ghcr.io/archon/archon-frontend:latest
+    container_name: archon-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3737}:80"
+    environment:
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - /mnt/user/appdata/archon/frontend:/appdata
+      - /mnt/user/appdata/archon/logs/frontend:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - archon-network
+    depends_on:
+      - archon-server
+      - archon-mcp
+      - archon-agents
+    mem_limit: ${FRONTEND_MEMORY_LIMIT:-512M}
+    cpus: ${FRONTEND_CPU_LIMIT:-1}
+    # Deploy blocks are ignored by Docker Compose - use mem_limit/cpus instead
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '${FRONTEND_CPU_LIMIT:-1}'
+    #       memory: ${FRONTEND_MEMORY_LIMIT:-512M}
+    #     reservations:
+    #       cpus: '${FRONTEND_CPU_RESERVE:-0.25}'
+    #       memory: ${FRONTEND_MEMORY_RESERVE:-128M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  archon-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NETWORK_SUBNET:-172.20.0.0/16}
+    driver_opts:
+      com.docker.network.bridge.name: ${BRIDGE_NAME:-br-archon}
+

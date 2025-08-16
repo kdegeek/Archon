@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Archon-MCP</Name>
+  <Repository>ghcr.io/archon/archon-mcp:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/archon/archon/issues</Support>
+  <Project>https://github.com/archon/archon</Project>
+  <Overview>Archon MCP Server - Model Context Protocol server for AI tool integration. Provides AI assistants with tools to query knowledge bases, manage projects, and search code examples. Requires Archon Server for data access.</Overview>
+  <Category>Productivity: Development: AI:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/archon/archon/main/unraid/templates/archon-mcp.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/archon/archon/main/assets/icon-mcp.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled></DateInstalled>
+  <DonateText>Support Archon Development</DonateText>
+  <DonateLink/>
+  <Requires>Archon Server running and accessible</Requires>
+  <Config Name="MCP Port" Target="8051" Default="8051" Mode="tcp" Description="MCP server port for AI tool integration" Type="Port" Display="always" Required="true" Mask="false">8051</Config>
+  <Config Name="AppData" Target="/appdata" Default="/mnt/user/appdata/archon/mcp" Mode="rw" Description="MCP configuration storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/archon/mcp</Config>
+  <Config Name="Logs" Target="/logs" Default="/mnt/user/appdata/archon/logs/mcp" Mode="rw" Description="MCP log files" Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/archon/logs/mcp</Config>
+  <Config Name="ARCHON_SERVER_URL" Target="ARCHON_SERVER_URL" Default="http://archon-server:8181" Mode="" Description="Archon Server API URL for data access" Type="Variable" Display="always" Required="true" Mask="false">http://archon-server:8181</Config>
+  <Config Name="SUPABASE_URL" Target="SUPABASE_URL" Default="" Mode="" Description="Supabase project URL (required) - format: https://xxxxx.supabase.co" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="SUPABASE_SERVICE_KEY" Target="SUPABASE_SERVICE_KEY" Default="" Mode="" Description="Supabase service role key (required) - starts with eyJ..." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="LOG_LEVEL" Target="LOG_LEVEL" Default="INFO" Mode="" Description="Logging level: DEBUG, INFO, WARNING, ERROR" Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID for file permissions (99=nobody)" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID for file permissions (100=users)" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="TZ" Target="TZ" Default="America/New_York" Mode="" Description="Container timezone" Type="Variable" Display="advanced" Required="false" Mask="false">America/New_York</Config>
+  <Config Name="MCP_MAX_CONNECTIONS" Target="MCP_MAX_CONNECTIONS" Default="100" Mode="" Description="Maximum concurrent MCP connections" Type="Variable" Display="expert" Required="false" Mask="false">100</Config>
+  <Config Name="REQUEST_TIMEOUT" Target="REQUEST_TIMEOUT" Default="30" Mode="" Description="Request timeout in seconds" Type="Variable" Display="expert" Required="false" Mask="false">30</Config>
+</Container>

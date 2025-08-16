@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Archon-Agents</Name>
+  <Repository>ghcr.io/archon/archon-agents:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/archon/archon/issues</Support>
+  <Project>https://github.com/archon/archon</Project>
+  <Overview>Archon Agents Service - PydanticAI-powered intelligent agents for advanced AI operations. Handles complex document processing, code analysis, and automated development workflows. Requires Archon Server for data access.</Overview>
+  <Category>Productivity: Development: AI:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/archon/archon/main/unraid/templates/archon-agents.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/archon/archon/main/assets/icon-agents.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled></DateInstalled>
+  <DonateText>Support Archon Development</DonateText>
+  <DonateLink/>
+  <Requires>Archon Server running and accessible, OpenAI API key recommended</Requires>
+  <Config Name="Agents Port" Target="8052" Default="8052" Mode="tcp" Description="Agents service port for AI operations" Type="Port" Display="always" Required="true" Mask="false">8052</Config>
+  <Config Name="AppData" Target="/appdata" Default="/mnt/user/appdata/archon/agents" Mode="rw" Description="Agents configuration and model cache" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/archon/agents</Config>
+  <Config Name="Model Cache" Target="/models" Default="/mnt/user/appdata/archon/models" Mode="rw" Description="AI model cache storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/archon/models</Config>
+  <Config Name="Logs" Target="/logs" Default="/mnt/user/appdata/archon/logs/agents" Mode="rw" Description="Agents log files" Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/archon/logs/agents</Config>
+  <Config Name="ARCHON_SERVER_URL" Target="ARCHON_SERVER_URL" Default="http://archon-server:8181" Mode="" Description="Archon Server API URL for data access" Type="Variable" Display="always" Required="true" Mask="false">http://archon-server:8181</Config>
+  <Config Name="OPENAI_API_KEY" Target="OPENAI_API_KEY" Default="" Mode="" Description="OpenAI API key for advanced AI features (recommended)" Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="SUPABASE_URL" Target="SUPABASE_URL" Default="" Mode="" Description="Supabase project URL (required) - format: https://xxxxx.supabase.co" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="SUPABASE_SERVICE_KEY" Target="SUPABASE_SERVICE_KEY" Default="" Mode="" Description="Supabase service role key (required) - starts with eyJ..." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="LOG_LEVEL" Target="LOG_LEVEL" Default="INFO" Mode="" Description="Logging level: DEBUG, INFO, WARNING, ERROR" Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID for file permissions (99=nobody)" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID for file permissions (100=users)" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="TZ" Target="TZ" Default="America/New_York" Mode="" Description="Container timezone" Type="Variable" Display="advanced" Required="false" Mask="false">America/New_York</Config>
+  <Config Name="MAX_CONCURRENT_AGENTS" Target="MAX_CONCURRENT_AGENTS" Default="5" Mode="" Description="Maximum concurrent agent instances" Type="Variable" Display="expert" Required="false" Mask="false">5</Config>
+  <Config Name="AGENT_TIMEOUT" Target="AGENT_TIMEOUT" Default="300" Mode="" Description="Agent operation timeout in seconds" Type="Variable" Display="expert" Required="false" Mask="false">300</Config>
+  <Config Name="MODEL_CACHE_SIZE" Target="MODEL_CACHE_SIZE" Default="2GB" Mode="" Description="Maximum model cache size" Type="Variable" Display="expert" Required="false" Mask="false">2GB</Config>
+</Container>

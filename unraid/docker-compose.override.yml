@@ -1,0 +1,132 @@
+version: '3.9'
+
+# Unraid-specific overrides for the base docker-compose.yml
+# This file works in conjunction with the base configuration
+
+services:
+  archon-server:
+    volumes:
+      - /mnt/user/appdata/archon/server:/appdata
+      - /mnt/user/archon-data:/data
+      - /mnt/user/appdata/archon/logs/server:/logs
+    environment:
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/New_York}
+    user: "${PUID:-99}:${PGID:-100}"
+    restart: unless-stopped
+    # Deploy blocks are ignored by Docker Compose - use mem_limit/cpus instead
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '${SERVER_CPU_LIMIT:-2}'
+    #       memory: ${SERVER_MEMORY_LIMIT:-2G}
+    #     reservations:
+    #       cpus: '${SERVER_CPU_RESERVE:-0.5}'
+    #       memory: ${SERVER_MEMORY_RESERVE:-512M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8181/health || exit 1"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+      start_period: 40s
+
+  archon-mcp:
+    volumes:
+      - /mnt/user/appdata/archon/mcp:/appdata
+      - /mnt/user/archon-data:/data:ro
+      - /mnt/user/appdata/archon/logs/mcp:/logs
+    environment:
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/New_York}
+    user: "${PUID:-99}:${PGID:-100}"
+    restart: unless-stopped
+    # Deploy blocks are ignored by Docker Compose - use mem_limit/cpus instead
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '${MCP_CPU_LIMIT:-1}'
+    #       memory: ${MCP_MEMORY_LIMIT:-1G}
+    #     reservations:
+    #       cpus: '${MCP_CPU_RESERVE:-0.25}'
+    #       memory: ${MCP_MEMORY_RESERVE:-256M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8051/health || exit 1"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+      start_period: 30s
+
+  archon-agents:
+    volumes:
+      - /mnt/user/appdata/archon/agents:/appdata
+      - /mnt/user/archon-data:/data:ro
+      - /mnt/user/appdata/archon/logs/agents:/logs
+    environment:
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/New_York}
+    user: "${PUID:-99}:${PGID:-100}"
+    restart: unless-stopped
+    # Deploy blocks are ignored by Docker Compose - use mem_limit/cpus instead
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '${AGENTS_CPU_LIMIT:-2}'
+    #       memory: ${AGENTS_MEMORY_LIMIT:-2G}
+    #     reservations:
+    #       cpus: '${AGENTS_CPU_RESERVE:-0.5}'
+    #       memory: ${AGENTS_MEMORY_RESERVE:-512M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8052/health || exit 1"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+      start_period: 30s
+
+  archon-frontend:
+    volumes:
+      - /mnt/user/appdata/archon/frontend:/appdata
+      - /mnt/user/appdata/archon/logs/frontend:/logs
+    environment:
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/New_York}
+    restart: unless-stopped
+    # Deploy blocks are ignored by Docker Compose - use mem_limit/cpus instead
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '${FRONTEND_CPU_LIMIT:-1}'
+    #       memory: ${FRONTEND_MEMORY_LIMIT:-512M}
+    #     reservations:
+    #       cpus: '${FRONTEND_CPU_RESERVE:-0.25}'
+    #       memory: ${FRONTEND_MEMORY_RESERVE:-128M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:80/ || exit 1"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+      start_period: 20s
+

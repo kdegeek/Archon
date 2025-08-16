@@ -44,6 +44,33 @@ This new vision for Archon replaces the old one (the agenteer). Archon used to b
 - [Supabase](https://supabase.com/) account (free tier or local Supabase both work)
 - [OpenAI API key](https://platform.openai.com/api-keys) (Gemini and Ollama are supported too!)
 
+## 🏠 Unraid Deployment
+
+Archon includes comprehensive support for Unraid Server with optimized configurations and Community Applications templates.
+
+### Quick Install on Unraid
+
+**Via Community Applications:**
+1. Search for "Archon" in Community Apps
+2. Install the "Archon Stack" template
+3. Configure your Supabase credentials
+4. Access at `http://[YOUR-UNRAID-IP]:3737`
+
+**Via Script:**
+```bash
+curl -sSL https://raw.githubusercontent.com/archon/archon/main/unraid/scripts/deploy.sh | bash
+```
+
+### Unraid Features
+
+- **One-click installation** through Community Applications
+- **Automated backup/restore scripts** with scheduling support
+- **Health monitoring** and automatic recovery
+- **Optimized resource management** for Unraid environments
+- **Proper volume mappings** to `/mnt/user/appdata/archon`
+
+For detailed Unraid deployment instructions, see [unraid/README.md](unraid/README.md).
+
 ### Setup Instructions
 
 1. **Clone Repository**:

@@ -1,0 +1,25 @@
+version: '3.9'
+
+# Build-specific compose file for building from source
+# Use with: docker compose -f docker-compose.unraid.yml -f docker-compose.unraid-build.yml up --build
+
+services:
+  archon-server:
+    build:
+      context: ../python
+      dockerfile: Dockerfile.server
+
+  archon-mcp:
+    build:
+      context: ../python
+      dockerfile: Dockerfile.mcp
+
+  archon-agents:
+    build:
+      context: ../python
+      dockerfile: Dockerfile.agents
+
+  archon-frontend:
+    build:
+      context: ../archon-ui-main
+      dockerfile: Dockerfile

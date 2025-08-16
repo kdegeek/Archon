@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Archon-Server</Name>
+  <Repository>ghcr.io/archon/archon-server:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/archon/archon/issues</Support>
+  <Project>https://github.com/archon/archon</Project>
+  <Overview>Archon Server - Core API server component of the Archon knowledge management system. This is the main backend service that handles API requests, database operations, and WebSocket connections. For standalone deployment or custom configurations.</Overview>
+  <Category>Productivity: Development:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/archon/archon/main/unraid/templates/archon-server.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/archon/archon/main/assets/icon-server.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled></DateInstalled>
+  <DonateText>Support Archon Development</DonateText>
+  <DonateLink/>
+  <Requires>Supabase account with project configured</Requires>
+  <Config Name="API Port" Target="8181" Default="8181" Mode="tcp" Description="Main API server port" Type="Port" Display="always" Required="true" Mask="false">8181</Config>
+  <Config Name="AppData" Target="/appdata" Default="/mnt/user/appdata/archon/server" Mode="rw" Description="Server configuration and state storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/archon/server</Config>
+  <Config Name="Data Storage" Target="/data" Default="/mnt/user/archon-data" Mode="rw" Description="Knowledge base and document storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/archon-data</Config>
+  <Config Name="Logs" Target="/logs" Default="/mnt/user/appdata/archon/logs/server" Mode="rw" Description="Server log files" Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/archon/logs/server</Config>
+  <Config Name="SUPABASE_URL" Target="SUPABASE_URL" Default="" Mode="" Description="Supabase project URL (required) - format: https://xxxxx.supabase.co" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="SUPABASE_SERVICE_KEY" Target="SUPABASE_SERVICE_KEY" Default="" Mode="" Description="Supabase service role key (required) - starts with eyJ..." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="OPENAI_API_KEY" Target="OPENAI_API_KEY" Default="" Mode="" Description="OpenAI API key for AI features (optional)" Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="LOG_LEVEL" Target="LOG_LEVEL" Default="INFO" Mode="" Description="Logging level: DEBUG, INFO, WARNING, ERROR" Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID for file permissions (99=nobody)" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID for file permissions (100=users)" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="TZ" Target="TZ" Default="America/New_York" Mode="" Description="Container timezone" Type="Variable" Display="advanced" Required="false" Mask="false">America/New_York</Config>
+  <Config Name="MAX_WORKERS" Target="MAX_WORKERS" Default="4" Mode="" Description="Maximum API worker threads" Type="Variable" Display="advanced" Required="false" Mask="false">4</Config>
+  <Config Name="ENABLE_PROJECTS" Target="ENABLE_PROJECTS" Default="true" Mode="" Description="Enable project management features" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="LOGFIRE_TOKEN" Target="LOGFIRE_TOKEN" Default="" Mode="" Description="Logfire observability token (optional)" Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="DB_POOL_SIZE" Target="DB_POOL_SIZE" Default="10" Mode="" Description="Database connection pool size" Type="Variable" Display="expert" Required="false" Mask="false">10</Config>
+  <Config Name="ENABLE_CACHE" Target="ENABLE_CACHE" Default="true" Mode="" Description="Enable query result caching" Type="Variable" Display="expert" Required="false" Mask="false">true</Config>
+  <Config Name="CACHE_TTL" Target="CACHE_TTL" Default="3600" Mode="" Description="Cache time-to-live in seconds" Type="Variable" Display="expert" Required="false" Mask="false">3600</Config>
+</Container>
