@@ -15,7 +15,7 @@
   <TemplateURL>https://raw.githubusercontent.com/coleam00/Archon/main/unraid/templates/archon-stack.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/coleam00/Archon/main/assets/icon.png</Icon>
   <ExtraParams>--restart=no</ExtraParams>
-  <PostArgs>sh -c "apk add --no-cache curl bash git unzip docker-cli docker-compose && ARCHON_RELEASE_VERSION=$ARCHON_RELEASE_VERSION curl -fsSL https://raw.githubusercontent.com/coleam00/Archon/${ARCHON_RELEASE_VERSION:-main}/unraid/scripts/deploy.sh | bash"</PostArgs>
+  <PostArgs>sh -c "apk add --no-cache curl bash git unzip docker-cli docker-cli-compose && ARCHON_RELEASE_VERSION=$ARCHON_RELEASE_VERSION curl -fsSL https://raw.githubusercontent.com/coleam00/Archon/${ARCHON_RELEASE_VERSION:-main}/unraid/scripts/deploy.sh | bash"</PostArgs>
   <CPUset/>
   <DateInstalled></DateInstalled>
   <DonateText>Support Archon Development</DonateText>

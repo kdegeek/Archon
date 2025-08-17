@@ -18,9 +18,18 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 UNRAID_DIR="$PROJECT_ROOT/unraid"
 
 # Default paths (will be overridden by .env if present)
-APPDATA_BASE="/mnt/user/appdata/archon"
-DATA_BASE="/mnt/user/archon-data"
-BACKUP_BASE="/mnt/user/backups/archon"
+# Check if we're running inside a container with /config mount
+if [ -d "/config" ] && [ -w "/config" ]; then
+    # Running inside helper container
+    APPDATA_BASE="/config"
+    DATA_BASE="/data"
+    BACKUP_BASE="/config/backups"
+else
+    # Running on host system
+    APPDATA_BASE="/mnt/user/appdata/archon"
+    DATA_BASE="/mnt/user/archon-data"
+    BACKUP_BASE="/mnt/user/backups/archon"
+fi
 
 # Functions
 log_info() {
@@ -45,7 +54,13 @@ detect_curl_bash_execution() {
         log_info "Detected curl | bash execution, cloning repository..."
         
         # Default installation directory
-        INSTALL_DIR="/mnt/user/appdata/archon"
+        # Check if we're running inside a container with /config mount
+        if [ -d "/config" ] && [ -w "/config" ]; then
+            INSTALL_DIR="/config"
+            log_info "Using /config mount for installation"
+        else
+            INSTALL_DIR="/mnt/user/appdata/archon"
+        fi
         
         # Create installation directory
         mkdir -p "$INSTALL_DIR"
@@ -450,6 +465,12 @@ check_network_conflicts() {
         source "$UNRAID_DIR/.env"
     fi
     
+    # Skip network checks if custom network is disabled
+    if [ "${CUSTOM_NETWORK_ENABLED:-true}" = "false" ]; then
+        log_info "Custom network disabled, using Docker default network"
+        return 0
+    fi
+    
     NETWORK_SUBNET=${NETWORK_SUBNET:-"172.20.0.0/16"}
     BRIDGE_NAME=${BRIDGE_NAME:-"br-archon"}
     
@@ -609,7 +630,7 @@ deploy_stack() {
     log_info "Stopping any existing Archon containers..."
     PROJECT_NAME="${COMPOSE_PROJECT_NAME:-archon}"
     
-    # Source environment to get RUN_AS_ROOT setting
+    # Source environment to get RUN_AS_ROOT and CUSTOM_NETWORK_ENABLED settings
     if [ -f "$UNRAID_DIR/.env" ]; then
         source "$UNRAID_DIR/.env"
     fi
@@ -639,11 +660,17 @@ deploy_stack() {
             if [ "${RUN_AS_ROOT:-false}" = "true" ]; then
                 COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.unraid-root.yml"
             fi
+            if [ "${CUSTOM_NETWORK_ENABLED:-true}" = "false" ]; then
+                COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.no-custom-network.yml"
+            fi
             $DOCKER_COMPOSE_BIN -p "$PROJECT_NAME" $COMPOSE_ARGS up -d --build
         else
             COMPOSE_ARGS="-f ../docker-compose.yml -f docker-compose.override.yml"
             if [ "${RUN_AS_ROOT:-false}" = "true" ]; then
                 COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.unraid-root.yml"
+            fi
+            if [ "${CUSTOM_NETWORK_ENABLED:-true}" = "false" ]; then
+                COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.no-custom-network.yml"
             fi
             $DOCKER_COMPOSE_BIN -p "$PROJECT_NAME" $COMPOSE_ARGS up -d
         fi
@@ -654,6 +681,9 @@ deploy_stack() {
             if [ "${RUN_AS_ROOT:-false}" = "true" ]; then
                 COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.unraid-root.yml"
             fi
+            if [ "${CUSTOM_NETWORK_ENABLED:-true}" = "false" ]; then
+                COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.no-custom-network.yml"
+            fi
             $DOCKER_COMPOSE_BIN -p "$PROJECT_NAME" $COMPOSE_ARGS up -d --build
         elif [ "$BUILD_FROM_SOURCE" = "true" ]; then
             log_warning "BUILD_FROM_SOURCE=true but docker-compose.unraid-build.yml not found, using standard compose"
@@ -661,11 +691,17 @@ deploy_stack() {
             if [ "${RUN_AS_ROOT:-false}" = "true" ]; then
                 COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.unraid-root.yml"
             fi
+            if [ "${CUSTOM_NETWORK_ENABLED:-true}" = "false" ]; then
+                COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.no-custom-network.yml"
+            fi
             $DOCKER_COMPOSE_BIN -p "$PROJECT_NAME" $COMPOSE_ARGS up -d --build
         else
             COMPOSE_ARGS="-f $COMPOSE_FILE"
             if [ "${RUN_AS_ROOT:-false}" = "true" ]; then
                 COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.unraid-root.yml"
+            fi
+            if [ "${CUSTOM_NETWORK_ENABLED:-true}" = "false" ]; then
+                COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.no-custom-network.yml"
             fi
             $DOCKER_COMPOSE_BIN -p "$PROJECT_NAME" $COMPOSE_ARGS up -d
         fi

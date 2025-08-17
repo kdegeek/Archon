@@ -192,7 +192,14 @@ stop_services() {
     log_info "Stopping Archon services..."
     
     cd "$UNRAID_DIR"
-    docker compose -p "${COMPOSE_PROJECT_NAME:-archon}" -f docker-compose.unraid.yml -f docker-compose.override.yml down
+    
+    # Build compose args based on RUN_AS_ROOT setting
+    COMPOSE_ARGS="-f docker-compose.unraid.yml"
+    if [ "${RUN_AS_ROOT:-false}" != "true" ]; then
+        COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.override.yml"
+    fi
+    
+    docker compose -p "${COMPOSE_PROJECT_NAME:-archon}" $COMPOSE_ARGS down
     
     # Wait for services to stop
     sleep 5
@@ -404,7 +411,14 @@ start_services() {
     log_info "Starting Archon services..."
     
     cd "$UNRAID_DIR"
-    docker compose -p "${COMPOSE_PROJECT_NAME:-archon}" -f docker-compose.unraid.yml -f docker-compose.override.yml up -d
+    
+    # Build compose args based on RUN_AS_ROOT setting
+    COMPOSE_ARGS="-f docker-compose.unraid.yml"
+    if [ "${RUN_AS_ROOT:-false}" != "true" ]; then
+        COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.override.yml"
+    fi
+    
+    docker compose -p "${COMPOSE_PROJECT_NAME:-archon}" $COMPOSE_ARGS up -d
     
     # Wait for services to start
     sleep 10

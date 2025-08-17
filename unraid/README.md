@@ -317,9 +317,7 @@ To build Archon from source instead of using pre-built images:
 2. Set `BUILD_FROM_SOURCE=true` in your `.env` file
 3. Run the deployment script
 
-The `docker-compose.unraid-build.yml` file contains the build configuration.
-
-**Note:** Building requires the complete source tree including:
+**Note:** Building from source requires the complete source tree including:
 - `python/` directory (backend services)
 - `archon-ui-main/` directory (frontend)
 

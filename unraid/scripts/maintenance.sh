@@ -309,7 +309,13 @@ update_containers() {
             "$SCRIPT_DIR/backup.sh" incremental
             
             # Recreate containers with new images
-            docker compose -p "${COMPOSE_PROJECT_NAME:-archon}" -f docker-compose.unraid.yml -f docker-compose.override.yml up -d --force-recreate
+            # Build compose args based on RUN_AS_ROOT setting
+            COMPOSE_ARGS="-f docker-compose.unraid.yml"
+            if [ "${RUN_AS_ROOT:-false}" != "true" ]; then
+                COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.override.yml"
+            fi
+            
+            docker compose -p "${COMPOSE_PROJECT_NAME:-archon}" $COMPOSE_ARGS up -d --force-recreate
             
             log_success "Containers updated successfully"
             if [ "${NOTIFY_ON_UPDATE:-true}" = "true" ]; then
@@ -386,7 +392,7 @@ security_check() {
         PGID_VALUE=${PGID:-100}
         
         # Check for files not owned by configured user:group
-        wrong_perms=$(find "$APPDATA_PATH" ! -user "$PUID_VALUE" -o ! -group "$PGID_VALUE" 2>/dev/null | wc -l)
+        wrong_perms=$(find "$APPDATA_PATH" \( ! -user "$PUID_VALUE" -o ! -group "$PGID_VALUE" \) 2>/dev/null | wc -l)
         if [ "$wrong_perms" -gt 0 ]; then
             log_warning "Found $wrong_perms files with incorrect permissions"
             log_info "Fixing file permissions..."

@@ -1,47 +1,52 @@
-#!/bin/bash
+#!/bin/sh
+# wait-for-http.sh - Wait for an HTTP service to be available
+# POSIX-compliant shell script
 
-# wait-for-http.sh - Wait for HTTP service to become available
-# Usage: wait-for-http.sh <url> [timeout] [interval]
+set -e
 
-URL="$1"
-TIMEOUT="${2:-120}"  # Default 120 seconds timeout
-INTERVAL="${3:-2}"   # Default 2 seconds between checks
+HOST="${1:-localhost}"
+PORT="${2:-80}"
+TIMEOUT="${3:-30}"
+PROTOCOL="${4:-http}"
 
-if [ -z "$URL" ]; then
-    echo "Usage: $0 <url> [timeout] [interval]"
-    echo "Example: $0 http://archon-server:8181/health 120 2"
+if [ -z "$HOST" ] || [ -z "$PORT" ]; then
+    echo "Usage: $0 host port [timeout] [protocol]"
     exit 1
 fi
 
-echo "Waiting for $URL to become available (timeout: ${TIMEOUT}s)..."
+echo "Waiting for $PROTOCOL://$HOST:$PORT to be available..."
 
 START_TIME=$(date +%s)
+END_TIME=$((START_TIME + TIMEOUT))
 
 while true; do
     CURRENT_TIME=$(date +%s)
-    ELAPSED=$((CURRENT_TIME - START_TIME))
     
-    if [ $ELAPSED -gt $TIMEOUT ]; then
-        echo "ERROR: Timeout after ${TIMEOUT}s waiting for $URL"
+    if [ "$CURRENT_TIME" -ge "$END_TIME" ]; then
+        echo "Timeout: $PROTOCOL://$HOST:$PORT did not become available within $TIMEOUT seconds"
         exit 1
     fi
     
-    # Try curl first, then wget as fallback
-    if command -v curl &> /dev/null; then
-        if curl -f -s --max-time 5 "$URL" > /dev/null 2>&1; then
-            echo "SUCCESS: $URL is now available (after ${ELAPSED}s)"
+    # Try to connect using available tools
+    if command -v curl >/dev/null 2>&1; then
+        if curl -fsS "$PROTOCOL://$HOST:$PORT/" >/dev/null 2>&1; then
+            echo "$PROTOCOL://$HOST:$PORT is available"
             exit 0
         fi
-    elif command -v wget &> /dev/null; then
-        if wget --timeout=5 --tries=1 -q -O /dev/null "$URL" 2>/dev/null; then
-            echo "SUCCESS: $URL is now available (after ${ELAPSED}s)"
+    elif command -v wget >/dev/null 2>&1; then
+        if wget --spider -q "$PROTOCOL://$HOST:$PORT/" 2>/dev/null; then
+            echo "$PROTOCOL://$HOST:$PORT is available"
+            exit 0
+        fi
+    elif command -v nc >/dev/null 2>&1; then
+        if nc -z "$HOST" "$PORT" 2>/dev/null; then
+            echo "$PROTOCOL://$HOST:$PORT is available (TCP connection successful)"
             exit 0
         fi
     else
-        echo "ERROR: Neither curl nor wget available for HTTP checks"
+        echo "Error: No suitable tool found (curl, wget, or nc required)"
         exit 1
     fi
     
-    echo "Waiting for $URL... (${ELAPSED}s elapsed)"
-    sleep $INTERVAL
+    sleep 1
 done

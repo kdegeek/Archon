@@ -1,0 +1,9 @@
+version: '3.9'
+
+# Override to remove custom network configuration
+# Use this when CUSTOM_NETWORK_ENABLED=false
+
+networks:
+  archon-network:
+    driver: bridge
+    # No custom IPAM configuration - uses Docker default
