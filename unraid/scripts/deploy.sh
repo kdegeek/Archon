@@ -16,6 +16,8 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 UNRAID_DIR="$PROJECT_ROOT/unraid"
+
+# Default paths (will be overridden by .env if present)
 APPDATA_BASE="/mnt/user/appdata/archon"
 DATA_BASE="/mnt/user/archon-data"
 BACKUP_BASE="/mnt/user/backups/archon"
@@ -49,19 +51,114 @@ detect_curl_bash_execution() {
         mkdir -p "$INSTALL_DIR"
         cd "$INSTALL_DIR"
         
-        # Clone the repository
+        # Use pinned release version for security (fallback to main if not available)
+        RELEASE_VERSION="${ARCHON_RELEASE_VERSION:-main}"
+        
+        # Clone the repository - with fallback to zip download
         if command -v git &> /dev/null; then
-            git clone https://github.com/archon/archon.git .
+            if [ "$RELEASE_VERSION" != "main" ]; then
+                log_info "Cloning Archon release $RELEASE_VERSION for security..."
+                git clone --branch "$RELEASE_VERSION" --depth 1 https://github.com/coleam00/Archon.git . || {
+                    log_warning "Release $RELEASE_VERSION not found, falling back to main branch"
+                    git clone --depth 1 https://github.com/coleam00/Archon.git .
+                }
+            else
+                log_warning "Using main branch (not recommended for production)"
+                log_warning "Set ARCHON_RELEASE_VERSION=v1.0.0 in environment for pinned release"
+                git clone --depth 1 https://github.com/coleam00/Archon.git .
+            fi
         else
-            log_error "Git is not installed. Cannot clone repository."
-            exit 1
+            log_info "Git not found; downloading zip archive..."
+            if command -v curl &> /dev/null; then
+                if [ "$RELEASE_VERSION" != "main" ]; then
+                    log_info "Downloading Archon release $RELEASE_VERSION..."
+                    curl -L -o archon.zip "https://github.com/coleam00/Archon/archive/refs/tags/${RELEASE_VERSION}.zip" || {
+                        log_warning "Release $RELEASE_VERSION not found, falling back to main"
+                        curl -L -o archon.zip https://github.com/coleam00/Archon/archive/refs/heads/main.zip
+                    }
+                else
+                    log_warning "Downloading from main branch (not recommended for production)"
+                    curl -L -o archon.zip https://github.com/coleam00/Archon/archive/refs/heads/main.zip
+                fi
+            elif command -v wget &> /dev/null; then
+                if [ "$RELEASE_VERSION" != "main" ]; then
+                    log_info "Downloading Archon release $RELEASE_VERSION..."
+                    wget -O archon.zip "https://github.com/coleam00/Archon/archive/refs/tags/${RELEASE_VERSION}.zip" || {
+                        log_warning "Release $RELEASE_VERSION not found, falling back to main"
+                        wget -O archon.zip https://github.com/coleam00/Archon/archive/refs/heads/main.zip
+                    }
+                else
+                    log_warning "Downloading from main branch (not recommended for production)"
+                    wget -O archon.zip https://github.com/coleam00/Archon/archive/refs/heads/main.zip
+                fi
+            else
+                log_error "Neither git, curl, nor wget is available. Cannot download repository."
+                exit 1
+            fi
+            
+            # Extract archive
+            if command -v unzip &> /dev/null; then
+                unzip -q archon.zip
+                # Handle both main branch and versioned releases with case-insensitive matching
+                shopt -s nocaseglob
+                
+                # Check for main branch (case-insensitive)
+                main_dirs=(archon-main Archon-main)
+                found_main=""
+                for dir in "${main_dirs[@]}"; do
+                    if [ -d "$dir" ]; then
+                        found_main="$dir"
+                        break
+                    fi
+                done
+                
+                if [ -n "$found_main" ]; then
+                    mv "$found_main"/* .
+                    rm -rf "$found_main"
+                elif [ -n "$RELEASE_VERSION" ]; then
+                    # Check for versioned releases (case-insensitive)
+                    version_dirs=("archon-${RELEASE_VERSION#v}" "Archon-${RELEASE_VERSION#v}")
+                    found_version=""
+                    for dir in "${version_dirs[@]}"; do
+                        if [ -d "$dir" ]; then
+                            found_version="$dir"
+                            break
+                        fi
+                    done
+                    
+                    if [ -n "$found_version" ]; then
+                        mv "$found_version"/* .
+                        rm -rf "$found_version"
+                    else
+                        # Find any extracted directory using case-insensitive pattern
+                        extracted_dir=$(find . -maxdepth 1 -type d -iname "archon-*" | head -1)
+                        if [ -n "$extracted_dir" ]; then
+                            mv "$extracted_dir"/* .
+                            rm -rf "$extracted_dir"
+                        fi
+                    fi
+                else
+                    # Find any extracted directory using case-insensitive pattern
+                    extracted_dir=$(find . -maxdepth 1 -type d -iname "archon-*" | head -1)
+                    if [ -n "$extracted_dir" ]; then
+                        mv "$extracted_dir"/* .
+                        rm -rf "$extracted_dir"
+                    fi
+                fi
+                
+                shopt -u nocaseglob
+                rm -f archon.zip
+            else
+                log_error "unzip is not available. Cannot extract repository."
+                exit 1
+            fi
         fi
         
         # Update paths to point to cloned repository
         PROJECT_ROOT="$INSTALL_DIR"
         UNRAID_DIR="$INSTALL_DIR/unraid"
         
-        log_success "Repository cloned to $INSTALL_DIR"
+        log_success "Repository installed to $INSTALL_DIR"
     fi
 }
 
@@ -83,9 +180,16 @@ check_prerequisites() {
     fi
     
     # Check Docker Compose
-    if ! docker compose version &> /dev/null; then
-        log_error "Docker Compose plugin is not installed"
-        exit 1
+    if ! docker compose version &>/dev/null; then
+        if command -v docker-compose &>/dev/null; then
+            export DOCKER_COMPOSE_BIN="docker-compose"
+            log_warning "Using docker-compose (v1) instead of Docker Compose plugin (v2)"
+        else
+            log_error "Docker Compose (v2 plugin or docker-compose) not installed"
+            exit 1
+        fi
+    else
+        export DOCKER_COMPOSE_BIN="docker compose"
     fi
     
     # Check for curl or wget for HTTP verification
@@ -96,12 +200,29 @@ check_prerequisites() {
         HTTP_CHECK_AVAILABLE=true
     fi
     
+    # Load environment variables to get custom paths
+    if [ -f "$UNRAID_DIR/.env" ]; then
+        source "$UNRAID_DIR/.env"
+    fi
+    
+    # Update paths from environment variables
+    APPDATA_BASE="${APPDATA_PATH:-$APPDATA_BASE}"
+    DATA_BASE="${DATA_PATH:-$DATA_BASE}"
+    BACKUP_BASE="${BACKUP_PATH:-$BACKUP_BASE}"
+    
+    # Export for docker-compose
+    export APPDATA_PATH="$APPDATA_BASE"
+    export DATA_PATH="$DATA_BASE"
+    
     # Check for required directories
     if [ ! -d "/mnt/user" ]; then
         log_warning "/mnt/user not found. Using local directories instead."
         APPDATA_BASE="$HOME/appdata/archon"
         DATA_BASE="$HOME/archon-data"
         BACKUP_BASE="$HOME/backups/archon"
+        # Update exports
+        export APPDATA_PATH="$APPDATA_BASE"
+        export DATA_PATH="$DATA_BASE"
     fi
     
     log_success "Prerequisites check completed"
@@ -120,11 +241,19 @@ create_directory_structure() {
     # Create backup directory
     mkdir -p "$BACKUP_BASE"
     
-    # Set permissions (Unraid default: nobody:users)
+    # Set permissions using PUID/PGID from environment
+    # Source the .env file to get PUID/PGID values
+    if [ -f "$UNRAID_DIR/.env" ]; then
+        source "$UNRAID_DIR/.env"
+    fi
+    
+    PUID_VALUE=${PUID:-99}
+    PGID_VALUE=${PGID:-100}
+    
     if [ -f /etc/unraid-version ]; then
-        chown -R 99:100 "$APPDATA_BASE" 2>/dev/null || true
-        chown -R 99:100 "$DATA_BASE" 2>/dev/null || true
-        chown -R 99:100 "$BACKUP_BASE" 2>/dev/null || true
+        chown -R "$PUID_VALUE:$PGID_VALUE" "$APPDATA_BASE" 2>/dev/null || true
+        chown -R "$PUID_VALUE:$PGID_VALUE" "$DATA_BASE" 2>/dev/null || true
+        chown -R "$PUID_VALUE:$PGID_VALUE" "$BACKUP_BASE" 2>/dev/null || true
     fi
     
     log_success "Directory structure created"
@@ -138,11 +267,68 @@ setup_environment() {
     
     if [ ! -f "$ENV_FILE" ]; then
         if [ -f "$ENV_TEMPLATE" ]; then
-            cp "$ENV_TEMPLATE" "$ENV_FILE"
-            log_warning "Created .env file from template. Please edit it with your configuration."
-            log_warning "Required: SUPABASE_URL and SUPABASE_SERVICE_KEY"
-            echo ""
-            read -p "Press Enter after configuring .env file to continue..."
+            cp "$ENV_TEMPLATE" "$ENV_FILE" || { log_error "Failed to create .env file from template"; exit 1; }
+            
+            # Pre-populate .env with any environment variables passed from CA
+            # This prevents double entry and respects CA configuration
+            log_info "Checking for environment variables from Community Applications..."
+            
+            # Helper function to update env file
+            update_env_var() {
+                local var_name="$1"
+                local var_value="$2"
+                if [ -n "$var_value" ]; then
+                    # Escape special characters for sed (including & and ])
+                    local escaped_value=$(printf '%s' "$var_value" | sed -e 's/[\\&|]/\\&/g' -e 's/\]/\\]/g')
+                    sed -i "s|^${var_name}=.*|${var_name}=$escaped_value|" "$ENV_FILE"
+                    log_info "  • Set $var_name from environment"
+                fi
+            }
+            
+            # Check and update all potentially passed environment variables
+            [ -n "$SUPABASE_URL" ] && [ "$SUPABASE_URL" != "https://your-project.supabase.co" ] && update_env_var "SUPABASE_URL" "$SUPABASE_URL"
+            [ -n "$SUPABASE_SERVICE_KEY" ] && [ "$SUPABASE_SERVICE_KEY" != "your-service-key-here" ] && update_env_var "SUPABASE_SERVICE_KEY" "$SUPABASE_SERVICE_KEY"
+            [ -n "$OPENAI_API_KEY" ] && update_env_var "OPENAI_API_KEY" "$OPENAI_API_KEY"
+            [ -n "$PUID" ] && update_env_var "PUID" "$PUID"
+            [ -n "$PGID" ] && update_env_var "PGID" "$PGID"
+            [ -n "$TZ" ] && update_env_var "TZ" "$TZ"
+            [ -n "$FRONTEND_PORT" ] && update_env_var "FRONTEND_PORT" "$FRONTEND_PORT"
+            [ -n "$SERVER_PORT" ] && update_env_var "SERVER_PORT" "$SERVER_PORT"
+            [ -n "$MCP_PORT" ] && update_env_var "MCP_PORT" "$MCP_PORT"
+            [ -n "$AGENTS_PORT" ] && update_env_var "AGENTS_PORT" "$AGENTS_PORT"
+            [ -n "$LOG_LEVEL" ] && update_env_var "LOG_LEVEL" "$LOG_LEVEL"
+            [ -n "$ENABLE_PROJECTS" ] && update_env_var "ENABLE_PROJECTS" "$ENABLE_PROJECTS"
+            [ -n "$LOGFIRE_TOKEN" ] && update_env_var "LOGFIRE_TOKEN" "$LOGFIRE_TOKEN"
+            [ -n "$COMPOSE_PROJECT_NAME" ] && update_env_var "COMPOSE_PROJECT_NAME" "$COMPOSE_PROJECT_NAME"
+            [ -n "$REGISTRY_PREFIX" ] && update_env_var "REGISTRY_PREFIX" "$REGISTRY_PREFIX"
+            
+            # Source the updated file to get current values
+            source "$ENV_FILE"
+            
+            # Only prompt for required values if they're still not set
+            if [ -z "$SUPABASE_URL" ] || [ "$SUPABASE_URL" = "https://your-project.supabase.co" ]; then
+                echo ""
+                read -rp "Enter SUPABASE_URL (e.g. https://xxxxx.supabase.co): " SUPABASE_URL_INPUT
+                if [ -n "$SUPABASE_URL_INPUT" ]; then
+                    # Escape special characters for sed
+                    SUPABASE_URL_ESCAPED=$(printf '%s\n' "$SUPABASE_URL_INPUT" | sed 's:[[\.*^$()+?{|]:\\&:g')
+                    sed -i "s|^SUPABASE_URL=.*|SUPABASE_URL=$SUPABASE_URL_ESCAPED|" "$ENV_FILE"
+                    SUPABASE_URL="$SUPABASE_URL_INPUT"
+                fi
+            fi
+            
+            if [ -z "$SUPABASE_SERVICE_KEY" ] || [ "$SUPABASE_SERVICE_KEY" = "your-service-key-here" ]; then
+                echo ""
+                read -rp "Enter SUPABASE_SERVICE_KEY: " SUPABASE_SERVICE_KEY_INPUT
+                if [ -n "$SUPABASE_SERVICE_KEY_INPUT" ]; then
+                    # Escape special characters for sed
+                    SUPABASE_SERVICE_KEY_ESCAPED=$(printf '%s\n' "$SUPABASE_SERVICE_KEY_INPUT" | sed 's:[[\.*^$()+?{|]:\\&:g')
+                    sed -i "s|^SUPABASE_SERVICE_KEY=.*|SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY_ESCAPED|" "$ENV_FILE"
+                    SUPABASE_SERVICE_KEY="$SUPABASE_SERVICE_KEY_INPUT"
+                fi
+            fi
+            
+            log_success "Environment configuration created and updated"
         else
             log_error "Environment template not found at $ENV_TEMPLATE"
             exit 1
@@ -155,18 +341,211 @@ setup_environment() {
     if [ -f "$ENV_FILE" ]; then
         source "$ENV_FILE"
         
-        if [ -z "$SUPABASE_URL" ] || [ "$SUPABASE_URL" == "https://your-project.supabase.co" ]; then
+        if [ -z "$SUPABASE_URL" ] || [ "$SUPABASE_URL" = "https://your-project.supabase.co" ]; then
             log_error "SUPABASE_URL is not configured in .env file"
             exit 1
         fi
         
-        if [ -z "$SUPABASE_SERVICE_KEY" ] || [ "$SUPABASE_SERVICE_KEY" == "your-service-key-here" ]; then
+        if [ -z "$SUPABASE_SERVICE_KEY" ] || [ "$SUPABASE_SERVICE_KEY" = "your-service-key-here" ]; then
             log_error "SUPABASE_SERVICE_KEY is not configured in .env file"
             exit 1
+        fi
+        
+        # Check Supabase connectivity
+        if command -v curl >/dev/null; then
+            log_info "Checking Supabase connectivity..."
+            if ! curl -sI --connect-timeout 5 "$SUPABASE_URL" >/dev/null; then
+                log_warning "Cannot reach SUPABASE_URL: $SUPABASE_URL. Check connectivity and URL format."
+            else
+                log_success "Supabase URL is reachable"
+            fi
         fi
     fi
     
     log_success "Environment configuration validated"
+}
+
+check_port_conflicts() {
+    log_info "Checking for port conflicts..."
+    
+    # Source environment to get port settings
+    if [ -f "$UNRAID_DIR/.env" ]; then
+        source "$UNRAID_DIR/.env"
+    fi
+    
+    # Default ports
+    FRONTEND_PORT=${FRONTEND_PORT:-3737}
+    SERVER_PORT=${SERVER_PORT:-8181}
+    MCP_PORT=${MCP_PORT:-8051}
+    AGENTS_PORT=${AGENTS_PORT:-8052}
+    
+    REQUIRED_PORTS=("$FRONTEND_PORT" "$SERVER_PORT" "$MCP_PORT" "$AGENTS_PORT")
+    CONFLICTING_PORTS=()
+    
+    # Check each required port
+    for port in "${REQUIRED_PORTS[@]}"; do
+        if command -v netstat &> /dev/null; then
+            if netstat -tuln 2>/dev/null | grep -q ":$port "; then
+                CONFLICTING_PORTS+=("$port")
+            fi
+        elif command -v ss &> /dev/null; then
+            if ss -tuln 2>/dev/null | grep -q ":$port "; then
+                CONFLICTING_PORTS+=("$port")
+            fi
+        elif [ -e "/proc/net/tcp" ]; then
+            # Convert port to hex for /proc/net/tcp check
+            port_hex=$(printf "%04X" "$port")
+            if grep -q ":$port_hex " /proc/net/tcp 2>/dev/null; then
+                CONFLICTING_PORTS+=("$port")
+            fi
+        else
+            log_warning "No network tools available for port conflict checking"
+            break
+        fi
+    done
+    
+    # Report conflicts
+    if [ ${#CONFLICTING_PORTS[@]} -gt 0 ]; then
+        log_warning "Port conflicts detected:"
+        for port in "${CONFLICTING_PORTS[@]}"; do
+            # Try to identify what's using the port
+            if command -v netstat &> /dev/null; then
+                process=$(netstat -tulnp 2>/dev/null | grep ":$port " | awk '{print $7}' | head -1)
+            elif command -v ss &> /dev/null; then
+                process=$(ss -tulnp 2>/dev/null | grep ":$port " | awk '{print $6}' | head -1)
+            else
+                process="unknown"
+            fi
+            log_warning "  • Port $port (used by: ${process:-unknown})"
+        done
+        
+        echo ""
+        log_info "To resolve port conflicts:"
+        log_info "  1. Stop the conflicting services, or"
+        log_info "  2. Update ports in $UNRAID_DIR/.env file:"
+        log_info "     FRONTEND_PORT=3738  # Change from $FRONTEND_PORT"
+        log_info "     SERVER_PORT=8182    # Change from $SERVER_PORT"
+        log_info "     MCP_PORT=8053       # Change from $MCP_PORT"
+        log_info "     AGENTS_PORT=8054    # Change from $AGENTS_PORT"
+        echo ""
+        
+        read -p "Continue anyway? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_error "Deployment cancelled due to port conflicts"
+            exit 1
+        fi
+        
+        log_warning "Proceeding with port conflicts - deployment may fail"
+    else
+        log_success "No port conflicts detected"
+    fi
+}
+
+check_network_conflicts() {
+    log_info "Checking for network conflicts..."
+    
+    # Source environment to get network settings
+    if [ -f "$UNRAID_DIR/.env" ]; then
+        source "$UNRAID_DIR/.env"
+    fi
+    
+    NETWORK_SUBNET=${NETWORK_SUBNET:-"172.20.0.0/16"}
+    BRIDGE_NAME=${BRIDGE_NAME:-"br-archon"}
+    
+    # Check if the bridge name already exists
+    if docker network ls --format "{{.Name}}" | grep -q "^${BRIDGE_NAME}$"; then
+        log_warning "Network bridge '$BRIDGE_NAME' already exists"
+        
+        # Check if it has the right subnet
+        existing_subnet=$(docker network inspect "$BRIDGE_NAME" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null || echo "")
+        if [ "$existing_subnet" != "$NETWORK_SUBNET" ]; then
+            log_warning "Existing bridge has different subnet: $existing_subnet vs $NETWORK_SUBNET"
+            log_info "Will use existing network configuration"
+        fi
+    fi
+    
+    # Check for subnet conflicts with existing networks using robust CIDR overlap detection
+    if command -v python3 >/dev/null 2>&1; then
+        # Use Python for proper CIDR overlap checking
+        conflicting_networks=$(python3 - <<EOF
+import ipaddress
+import subprocess
+import json
+import sys
+
+try:
+    # Parse our target network
+    target_network = ipaddress.ip_network("$NETWORK_SUBNET")
+    
+    # Get all docker networks and their subnets
+    networks_result = subprocess.run(
+        ['docker', 'network', 'ls', '--format', '{{.Name}}'],
+        capture_output=True, text=True, check=True
+    )
+    
+    conflicting = []
+    for network_name in networks_result.stdout.strip().split('\n'):
+        if not network_name or network_name == "$BRIDGE_NAME":
+            continue
+            
+        try:
+            inspect_result = subprocess.run(
+                ['docker', 'network', 'inspect', network_name, '--format', '{{json .IPAM.Config}}'],
+                capture_output=True, text=True, check=True
+            )
+            
+            # Parse IPAM config
+            ipam_config = json.loads(inspect_result.stdout.strip())
+            if not ipam_config:
+                continue
+                
+            for config in ipam_config:
+                if 'Subnet' in config and config['Subnet']:
+                    try:
+                        existing_network = ipaddress.ip_network(config['Subnet'])
+                        # Check for overlap
+                        if target_network.overlaps(existing_network):
+                            conflicting.append(f"{network_name}: {config['Subnet']}")
+                    except ValueError:
+                        # Invalid subnet format, skip
+                        continue
+                        
+        except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError):
+            # Skip networks we can't inspect
+            continue
+    
+    # Output conflicting networks
+    for conflict in conflicting:
+        print(conflict)
+        
+except Exception as e:
+    # Fallback to simpler check if Python fails
+    sys.exit(1)
+EOF
+)"
+    else
+        # Fallback to simpler subnet matching if Python not available
+        log_warning "Python3 not available, using simplified network conflict detection"
+        subnet_base=$(echo "$NETWORK_SUBNET" | cut -d'.' -f1-2)
+        conflicting_networks=$(docker network ls --format "{{.Name}}" | xargs -I {} sh -c 'docker network inspect {} --format "{{.Name}}: {{range .IPAM.Config}}{{.Subnet}}{{end}}" 2>/dev/null' | grep "^.*: ${subnet_base}\..*" | grep -v "^${BRIDGE_NAME}:" || true)
+    fi
+    
+    if [ -n "$conflicting_networks" ]; then
+        log_warning "Found networks with conflicting subnet ranges:"
+        echo "$conflicting_networks"
+        log_info "Consider updating NETWORK_SUBNET in .env to avoid conflicts"
+        log_info "Example: NETWORK_SUBNET=172.21.0.0/16"
+        
+        read -p "Continue with current network configuration? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_error "Deployment cancelled. Please update network settings in .env file."
+            exit 1
+        fi
+    fi
+    
+    log_success "Network configuration validated"
 }
 
 validate_build_context() {
@@ -198,11 +577,17 @@ validate_build_context() {
 pull_docker_images() {
     log_info "Pulling Docker images..."
     
+    # Source environment to get registry prefix
+    if [ -f "$UNRAID_DIR/.env" ]; then
+        source "$UNRAID_DIR/.env"
+    fi
+    REGISTRY_PREFIX=${REGISTRY_PREFIX:-"ghcr.io/coleam00"}
+    
     # Try to pull pre-built images first
-    docker pull ghcr.io/archon/archon-server:latest 2>/dev/null || true
-    docker pull ghcr.io/archon/archon-mcp:latest 2>/dev/null || true
-    docker pull ghcr.io/archon/archon-agents:latest 2>/dev/null || true
-    docker pull ghcr.io/archon/archon-frontend:latest 2>/dev/null || true
+    docker pull "${REGISTRY_PREFIX}/archon-server:latest" 2>/dev/null || true
+    docker pull "${REGISTRY_PREFIX}/archon-mcp:latest" 2>/dev/null || true
+    docker pull "${REGISTRY_PREFIX}/archon-agents:latest" 2>/dev/null || true
+    docker pull "${REGISTRY_PREFIX}/archon-frontend:latest" 2>/dev/null || true
     
     log_success "Docker images ready"
 }
@@ -222,14 +607,68 @@ deploy_stack() {
     
     # Stop existing containers if running
     log_info "Stopping any existing Archon containers..."
-    docker compose -f "$COMPOSE_FILE" -f docker-compose.override.yml down 2>/dev/null || true
+    PROJECT_NAME="${COMPOSE_PROJECT_NAME:-archon}"
+    
+    # Source environment to get RUN_AS_ROOT setting
+    if [ -f "$UNRAID_DIR/.env" ]; then
+        source "$UNRAID_DIR/.env"
+    fi
+    
+    # Determine compose args based on whether we're using base or unraid compose
+    if [ -f ../docker-compose.yml ]; then
+        # Using base compose file, include override
+        STOP_COMPOSE_ARGS="-f ../docker-compose.yml -f docker-compose.override.yml"
+    else
+        # Using unraid compose file, no override needed
+        STOP_COMPOSE_ARGS="-f $COMPOSE_FILE"
+    fi
+    
+    # Add root mode override if enabled
+    if [ "${RUN_AS_ROOT:-false}" = "true" ]; then
+        STOP_COMPOSE_ARGS="$STOP_COMPOSE_ARGS -f docker-compose.unraid-root.yml"
+    fi
+    
+    $DOCKER_COMPOSE_BIN -p "$PROJECT_NAME" $STOP_COMPOSE_ARGS down 2>/dev/null || true
     
     # Start the stack with conditional building
     log_info "Starting Archon services..."
-    if [ "$BUILD_FROM_SOURCE" = "true" ]; then
-        docker compose -f "$COMPOSE_FILE" -f docker-compose.unraid-build.yml -f docker-compose.override.yml up -d --build
+    if [ -f ../docker-compose.yml ]; then
+        # Using base docker-compose.yml, include override
+        if [ "$BUILD_FROM_SOURCE" = "true" ] && [ -f docker-compose.unraid-build.yml ]; then
+            COMPOSE_ARGS="-f ../docker-compose.yml -f docker-compose.override.yml -f docker-compose.unraid-build.yml"
+            if [ "${RUN_AS_ROOT:-false}" = "true" ]; then
+                COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.unraid-root.yml"
+            fi
+            $DOCKER_COMPOSE_BIN -p "$PROJECT_NAME" $COMPOSE_ARGS up -d --build
+        else
+            COMPOSE_ARGS="-f ../docker-compose.yml -f docker-compose.override.yml"
+            if [ "${RUN_AS_ROOT:-false}" = "true" ]; then
+                COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.unraid-root.yml"
+            fi
+            $DOCKER_COMPOSE_BIN -p "$PROJECT_NAME" $COMPOSE_ARGS up -d
+        fi
     else
-        docker compose -f "$COMPOSE_FILE" -f docker-compose.override.yml up -d
+        # Using unraid compose file, no override needed
+        if [ "$BUILD_FROM_SOURCE" = "true" ] && [ -f docker-compose.unraid-build.yml ]; then
+            COMPOSE_ARGS="-f $COMPOSE_FILE -f docker-compose.unraid-build.yml"
+            if [ "${RUN_AS_ROOT:-false}" = "true" ]; then
+                COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.unraid-root.yml"
+            fi
+            $DOCKER_COMPOSE_BIN -p "$PROJECT_NAME" $COMPOSE_ARGS up -d --build
+        elif [ "$BUILD_FROM_SOURCE" = "true" ]; then
+            log_warning "BUILD_FROM_SOURCE=true but docker-compose.unraid-build.yml not found, using standard compose"
+            COMPOSE_ARGS="-f $COMPOSE_FILE"
+            if [ "${RUN_AS_ROOT:-false}" = "true" ]; then
+                COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.unraid-root.yml"
+            fi
+            $DOCKER_COMPOSE_BIN -p "$PROJECT_NAME" $COMPOSE_ARGS up -d --build
+        else
+            COMPOSE_ARGS="-f $COMPOSE_FILE"
+            if [ "${RUN_AS_ROOT:-false}" = "true" ]; then
+                COMPOSE_ARGS="$COMPOSE_ARGS -f docker-compose.unraid-root.yml"
+            fi
+            $DOCKER_COMPOSE_BIN -p "$PROJECT_NAME" $COMPOSE_ARGS up -d
+        fi
     fi
     
     if [ $? -eq 0 ]; then
@@ -243,12 +682,22 @@ deploy_stack() {
 verify_deployment() {
     log_info "Verifying deployment..."
     
+    # Source environment to get port settings
+    if [ -f "$UNRAID_DIR/.env" ]; then
+        source "$UNRAID_DIR/.env"
+    fi
+    
     # Wait for services to start
     log_info "Waiting for services to initialize..."
     sleep 10
     
-    # Check service health
-    services=("archon-server:8181" "archon-mcp:8051" "archon-agents:8052" "archon-frontend:3737")
+    # Check service health - use environment variables for ports
+    services=(
+        "archon-server:${SERVER_PORT:-8181}" 
+        "archon-mcp:${MCP_PORT:-8051}" 
+        "archon-agents:${AGENTS_PORT:-8052}" 
+        "archon-frontend:${FRONTEND_PORT:-3737}"
+    )
     all_healthy=true
     
     for service in "${services[@]}"; do
@@ -297,6 +746,12 @@ show_post_deployment_info() {
     echo "Archon has been deployed successfully!"
     echo "======================================"
     echo ""
+    
+    # Source environment to get port settings
+    if [ -f "$UNRAID_DIR/.env" ]; then
+        source "$UNRAID_DIR/.env"
+    fi
+    
     # Detect IP address with fallbacks
     SERVER_IP=""
     
@@ -322,10 +777,10 @@ show_post_deployment_info() {
     fi
     
     echo "Access Points:"
-    echo "  Web UI:        http://${SERVER_IP}:3737"
-    echo "  API Server:    http://${SERVER_IP}:8181"
-    echo "  MCP Server:    http://${SERVER_IP}:8051"
-    echo "  Agents Server: http://${SERVER_IP}:8052"
+    echo "  Web UI:        http://${SERVER_IP}:${FRONTEND_PORT:-3737}"
+    echo "  API Server:    http://${SERVER_IP}:${SERVER_PORT:-8181}"
+    echo "  MCP Server:    http://${SERVER_IP}:${MCP_PORT:-8051}"
+    echo "  Agents Server: http://${SERVER_IP}:${AGENTS_PORT:-8052}"
     echo ""
     echo "Data Locations:"
     echo "  AppData:       $APPDATA_BASE"
@@ -339,9 +794,15 @@ show_post_deployment_info() {
     echo "  4. Configure MCP integration with your AI coding assistant"
     echo ""
     echo "Management Commands:"
-    echo "  View logs:     docker compose -f $UNRAID_DIR/docker-compose.unraid.yml -f $UNRAID_DIR/docker-compose.override.yml logs -f"
-    echo "  Stop services: docker compose -f $UNRAID_DIR/docker-compose.unraid.yml -f $UNRAID_DIR/docker-compose.override.yml down"
-    echo "  Restart:       docker compose -f $UNRAID_DIR/docker-compose.unraid.yml -f $UNRAID_DIR/docker-compose.override.yml restart"
+    if [ -f "$PROJECT_ROOT/docker-compose.yml" ]; then
+        echo "  View logs:     $DOCKER_COMPOSE_BIN -f $PROJECT_ROOT/docker-compose.yml -f $UNRAID_DIR/docker-compose.override.yml logs -f"
+        echo "  Stop services: $DOCKER_COMPOSE_BIN -f $PROJECT_ROOT/docker-compose.yml -f $UNRAID_DIR/docker-compose.override.yml down"
+        echo "  Restart:       $DOCKER_COMPOSE_BIN -f $PROJECT_ROOT/docker-compose.yml -f $UNRAID_DIR/docker-compose.override.yml restart"
+    else
+        echo "  View logs:     $DOCKER_COMPOSE_BIN -f $UNRAID_DIR/docker-compose.unraid.yml logs -f"
+        echo "  Stop services: $DOCKER_COMPOSE_BIN -f $UNRAID_DIR/docker-compose.unraid.yml down"
+        echo "  Restart:       $DOCKER_COMPOSE_BIN -f $UNRAID_DIR/docker-compose.unraid.yml restart"
+    fi
     echo ""
     
     # Send Unraid notification if available
@@ -355,7 +816,11 @@ handle_error() {
     log_info "Rolling back..."
     
     cd "$UNRAID_DIR" 2>/dev/null || true
-    docker compose -f docker-compose.unraid.yml -f docker-compose.override.yml down 2>/dev/null || true
+    if [ -f ../docker-compose.yml ]; then
+        $DOCKER_COMPOSE_BIN -f ../docker-compose.yml -f docker-compose.override.yml down 2>/dev/null || true
+    else
+        $DOCKER_COMPOSE_BIN -f docker-compose.unraid.yml down 2>/dev/null || true
+    fi
     
     log_error "Deployment rolled back. Please check the logs for details."
     exit 1
@@ -375,6 +840,8 @@ main() {
     check_prerequisites
     create_directory_structure
     setup_environment
+    check_port_conflicts
+    check_network_conflicts
     validate_build_context
     pull_docker_images
     deploy_stack

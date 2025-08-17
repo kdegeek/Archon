@@ -58,7 +58,7 @@ Archon includes comprehensive support for Unraid Server with optimized configura
 
 **Via Script:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/archon/archon/main/unraid/scripts/deploy.sh | bash
+curl -sSL https://raw.githubusercontent.com/coleam00/Archon/main/unraid/scripts/deploy.sh | bash
 ```
 
 ### Unraid Features

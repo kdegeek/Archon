@@ -79,14 +79,57 @@ check_prerequisites() {
     # Create subdirectories for organized backup storage
     mkdir -p "$BACKUP_PATH"/{snapshots,compressed,encrypted}
     
-    # Check available space
-    AVAILABLE_SPACE=$(df "$BACKUP_PATH" | awk 'NR==2 {print $4}')
-    REQUIRED_SPACE=$(du -s "$APPDATA_PATH" "$DATA_PATH" 2>/dev/null | awk '{sum+=$1} END {print sum}')
+    # Check available space with robust calculation
+    log_info "Checking disk space requirements..."
     
-    if [ "$AVAILABLE_SPACE" -lt "$REQUIRED_SPACE" ]; then
-        log_error "Insufficient space for backup. Required: ${REQUIRED_SPACE}K, Available: ${AVAILABLE_SPACE}K"
-        send_notification "Archon Backup Failed" "Insufficient disk space for backup" "error"
-        exit 1
+    # Get available space in KB using df -k for consistent units
+    AVAILABLE_SPACE_KB=$(df -k "$BACKUP_PATH" 2>/dev/null | awk 'NR==2 {print $4}' || echo "0")
+    
+    # Calculate required space in KB using du -sk
+    APPDATA_SIZE_KB=0
+    DATA_SIZE_KB=0
+    
+    if [ -d "$APPDATA_PATH" ]; then
+        APPDATA_SIZE_KB=$(du -sk "$APPDATA_PATH" 2>/dev/null | awk '{print $1}' || echo "0")
+    fi
+    
+    if [ -d "$DATA_PATH" ]; then
+        DATA_SIZE_KB=$(du -sk "$DATA_PATH" 2>/dev/null | awk '{print $1}' || echo "0")
+    fi
+    
+    # Calculate total required space with 20% compression buffer and 10% safety margin
+    TOTAL_DATA_KB=$((APPDATA_SIZE_KB + DATA_SIZE_KB))
+    # Apply compression factor (assume 80% of original size after compression)
+    if [ "$BACKUP_COMPRESSION" = "true" ]; then
+        COMPRESSED_SIZE_KB=$((TOTAL_DATA_KB * 80 / 100))
+    else
+        COMPRESSED_SIZE_KB=$TOTAL_DATA_KB
+    fi
+    
+    # Add 10% safety margin
+    REQUIRED_SPACE_KB=$((COMPRESSED_SIZE_KB * 110 / 100))
+    
+    # Convert to human readable
+    AVAILABLE_SPACE_MB=$((AVAILABLE_SPACE_KB / 1024))
+    REQUIRED_SPACE_MB=$((REQUIRED_SPACE_KB / 1024))
+    
+    log_info "Space analysis:"
+    log_info "  - AppData size: $((APPDATA_SIZE_KB / 1024))MB"
+    log_info "  - Data size: $((DATA_SIZE_KB / 1024))MB" 
+    log_info "  - Required space (with compression/margin): ${REQUIRED_SPACE_MB}MB"
+    log_info "  - Available space: ${AVAILABLE_SPACE_MB}MB"
+    
+    # Check if we have enough space (with fallback if calculation fails)
+    if [ "$AVAILABLE_SPACE_KB" -gt 0 ] && [ "$REQUIRED_SPACE_KB" -gt 0 ]; then
+        if [ "$AVAILABLE_SPACE_KB" -lt "$REQUIRED_SPACE_KB" ]; then
+            log_error "Insufficient space for backup. Required: ${REQUIRED_SPACE_MB}MB, Available: ${AVAILABLE_SPACE_MB}MB"
+            if [ "${NOTIFY_ON_ERROR:-true}" = "true" ]; then
+                send_notification "Archon Backup Failed" "Insufficient disk space for backup" "error"
+            fi
+            exit 1
+        fi
+    else
+        log_warning "Could not calculate disk space requirements accurately, proceeding with caution"
     fi
     
     log_success "Prerequisites check completed"
@@ -96,7 +139,7 @@ stop_services() {
     log_info "Stopping Archon services for consistent backup..."
     
     cd "$UNRAID_DIR"
-    docker compose -f docker-compose.unraid.yml -f docker-compose.override.yml stop
+    docker compose -p "${COMPOSE_PROJECT_NAME:-archon}" -f docker-compose.unraid.yml -f docker-compose.override.yml stop
     
     # Wait for services to stop
     sleep 5
@@ -108,7 +151,7 @@ start_services() {
     log_info "Restarting Archon services..."
     
     cd "$UNRAID_DIR"
-    docker compose -f docker-compose.unraid.yml -f docker-compose.override.yml start
+    docker compose -p "${COMPOSE_PROJECT_NAME:-archon}" -f docker-compose.unraid.yml -f docker-compose.override.yml start
     
     log_success "Services restarted"
 }
@@ -159,11 +202,19 @@ backup_appdata() {
                         "$APPDATA_BACKUP_DIR/$service/"
                 else
                     # First backup or latest link doesn't exist, do full backup
-                    cp -r "$APPDATA_PATH/$service" "$APPDATA_BACKUP_DIR/"
+                    if command -v rsync &> /dev/null; then
+                        rsync -a --delete "$APPDATA_PATH/$service/" "$APPDATA_BACKUP_DIR/$service/"
+                    else
+                        cp -r "$APPDATA_PATH/$service" "$APPDATA_BACKUP_DIR/"
+                    fi
                 fi
             else
                 # Full backup
-                cp -r "$APPDATA_PATH/$service" "$APPDATA_BACKUP_DIR/"
+                if command -v rsync &> /dev/null; then
+                    rsync -a --delete "$APPDATA_PATH/$service/" "$APPDATA_BACKUP_DIR/$service/"
+                else
+                    cp -r "$APPDATA_PATH/$service" "$APPDATA_BACKUP_DIR/"
+                fi
             fi
         fi
     done
@@ -171,7 +222,11 @@ backup_appdata() {
     # Backup logs
     if [ -d "$APPDATA_PATH/logs" ]; then
         log_info "Backing up logs..."
-        cp -r "$APPDATA_PATH/logs" "$APPDATA_BACKUP_DIR/"
+        if command -v rsync &> /dev/null; then
+            rsync -a --delete "$APPDATA_PATH/logs/" "$APPDATA_BACKUP_DIR/logs/"
+        else
+            cp -r "$APPDATA_PATH/logs" "$APPDATA_BACKUP_DIR/"
+        fi
     fi
     
     log_success "Application data backed up"
@@ -194,11 +249,19 @@ backup_documents() {
                     "$DOCS_BACKUP_DIR/"
             else
                 # First backup or latest link doesn't exist, do full backup
-                cp -r "$DATA_PATH"/* "$DOCS_BACKUP_DIR/" 2>/dev/null || true
+                if command -v rsync &> /dev/null; then
+                    rsync -a --delete "$DATA_PATH/" "$DOCS_BACKUP_DIR/"
+                else
+                    cp -r "$DATA_PATH"/* "$DOCS_BACKUP_DIR/" 2>/dev/null || true
+                fi
             fi
         else
             # Full backup
-            cp -r "$DATA_PATH"/* "$DOCS_BACKUP_DIR/" 2>/dev/null || true
+            if command -v rsync &> /dev/null; then
+                rsync -a --delete "$DATA_PATH/" "$DOCS_BACKUP_DIR/"
+            else
+                cp -r "$DATA_PATH"/* "$DOCS_BACKUP_DIR/" 2>/dev/null || true
+            fi
         fi
     fi
     
@@ -222,7 +285,11 @@ backup_configuration() {
     
     # Backup any custom scripts
     if [ -d "$UNRAID_DIR/scripts" ]; then
-        cp -r "$UNRAID_DIR/scripts" "$CONFIG_BACKUP_DIR/"
+        if command -v rsync &> /dev/null; then
+            rsync -a "$UNRAID_DIR/scripts/" "$CONFIG_BACKUP_DIR/scripts/"
+        else
+            cp -r "$UNRAID_DIR/scripts" "$CONFIG_BACKUP_DIR/"
+        fi
     fi
     
     log_success "Configuration files backed up"
@@ -234,8 +301,14 @@ backup_docker_images() {
     IMAGES_BACKUP_DIR="$BACKUP_PATH/snapshots/$BACKUP_NAME/images"
     mkdir -p "$IMAGES_BACKUP_DIR"
     
+    # Source environment to get registry prefix
+    if [ -f "$UNRAID_DIR/.env" ]; then
+        source "$UNRAID_DIR/.env"
+    fi
+    REGISTRY_PREFIX=${REGISTRY_PREFIX:-"ghcr.io/coleam00"}
+    
     # Export Docker images
-    images=("ghcr.io/archon/archon-server" "ghcr.io/archon/archon-mcp" "ghcr.io/archon/archon-agents" "ghcr.io/archon/archon-frontend")
+    images=("${REGISTRY_PREFIX}/archon-server" "${REGISTRY_PREFIX}/archon-mcp" "${REGISTRY_PREFIX}/archon-agents" "${REGISTRY_PREFIX}/archon-frontend")
     
     for image in "${images[@]}"; do
         if docker images | grep -q "$image"; then
@@ -437,10 +510,14 @@ main() {
         DURATION_SEC=$((DURATION % 60))
         
         log_success "Backup completed successfully in ${DURATION_MIN}m ${DURATION_SEC}s"
-        send_notification "Archon Backup Complete" "Backup completed successfully. Size: $BACKUP_SIZE" "normal"
+        if [ "${NOTIFY_ON_BACKUP:-true}" = "true" ]; then
+            send_notification "Archon Backup Complete" "Backup completed successfully. Size: $BACKUP_SIZE" "normal"
+        fi
     else
         log_error "Backup failed"
-        send_notification "Archon Backup Failed" "Backup process failed. Check logs for details." "error"
+        if [ "${NOTIFY_ON_ERROR:-true}" = "true" ]; then
+            send_notification "Archon Backup Failed" "Backup process failed. Check logs for details." "error"
+        fi
         
         # Restart services if they were stopped
         if [ "$BACKUP_TYPE" == "full" ]; then

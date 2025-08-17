@@ -64,7 +64,7 @@ If templates don't appear automatically:
 
 1. **Download the template file:**
    ```bash
-   wget https://raw.githubusercontent.com/archon/archon/main/unraid/templates/archon-server.xml
+   wget https://raw.githubusercontent.com/coleam00/Archon/main/unraid/templates/archon-server.xml
    ```
 
 2. **Add to Community Applications:**
@@ -304,7 +304,7 @@ Secure external access:
 
 ### Getting Help
 
-- **Template Issues:** [GitHub Issues](https://github.com/archon/archon/issues)
+- **Template Issues:** [GitHub Issues](https://github.com/coleam00/Archon/issues)
 - **Unraid Forums:** [Community Applications Thread](https://forums.unraid.net)
 - **Documentation:** [Archon Docs](https://docs.archon.dev)
 

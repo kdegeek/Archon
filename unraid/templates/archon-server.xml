@@ -1,19 +1,19 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Archon-Server</Name>
-  <Repository>ghcr.io/archon/archon-server:latest</Repository>
+  <Repository>ghcr.io/coleam00/archon-server:latest</Repository>
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/archon/archon/issues</Support>
-  <Project>https://github.com/archon/archon</Project>
+  <Support>https://github.com/coleam00/Archon/issues</Support>
+  <Project>https://github.com/coleam00/Archon</Project>
   <Overview>Archon Server - Core API server component of the Archon knowledge management system. This is the main backend service that handles API requests, database operations, and WebSocket connections. For standalone deployment or custom configurations.</Overview>
   <Category>Productivity: Development:</Category>
-  <WebUI/>
-  <TemplateURL>https://raw.githubusercontent.com/archon/archon/main/unraid/templates/archon-server.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/archon/archon/main/assets/icon-server.png</Icon>
+  <WebUI>http://[IP]:[PORT:8181]/docs</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/coleam00/Archon/main/unraid/templates/archon-server.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/coleam00/Archon/main/assets/icon-server.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>

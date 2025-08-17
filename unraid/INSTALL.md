@@ -21,17 +21,23 @@ Get Archon up and running on your Unraid server in minutes!
 
 SSH into your Unraid server and run:
 
+**Recommended (Pinned Release):**
 ```bash
-curl -sSL https://raw.githubusercontent.com/archon/archon/main/unraid/scripts/deploy.sh | bash
+ARCHON_RELEASE_VERSION=v1.0.0 curl -sSL https://raw.githubusercontent.com/coleam00/Archon/main/unraid/scripts/deploy.sh | bash
 ```
 
-This will:
-- Automatically clone the Archon repository to `/mnt/user/appdata/archon`
-- Set up the directory structure
-- Guide you through configuration
-- Deploy all services
+**Development (Latest):**
+```bash
+curl -sSL https://raw.githubusercontent.com/coleam00/Archon/main/unraid/scripts/deploy.sh | bash
+```
 
-Follow the prompts to enter your Supabase credentials.
+**What this does:**
+- Downloads the specified Archon release (or latest from main)
+- Automatically sets up directory structure in `/mnt/user/appdata/archon`
+- Guides you through configuration
+- Deploys all services with security best practices
+
+**Security Note:** Using a pinned release version (e.g., v1.0.0) is recommended for production deployments to ensure supply chain security and stable operation.
 
 ## 📋 Prerequisites Checklist
 
@@ -68,7 +74,7 @@ cd /mnt/user/appdata/archon
 
 ```bash
 # Download deployment package
-wget https://github.com/archon/archon/archive/main.zip
+wget https://github.com/coleam00/Archon/archive/main.zip
 unzip main.zip
 cd archon-main/unraid
 ```
@@ -263,7 +269,7 @@ docker compose up -d
 
 - **Quick Help:** Run `/mnt/user/appdata/archon/unraid/scripts/health-check.sh`
 - **Logs:** `docker logs archon-server`
-- **Support:** [GitHub Issues](https://github.com/archon/archon/issues)
+- **Support:** [GitHub Issues](https://github.com/coleam00/Archon/issues)
 - **Community:** [Unraid Forums](https://forums.unraid.net)
 
 ## 📊 System Requirements Reference

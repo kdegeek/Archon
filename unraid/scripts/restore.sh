@@ -31,6 +31,9 @@ NC='\033[0m'
 # Backup file to restore from (can be passed as argument)
 BACKUP_FILE="${1:-latest}"
 
+# Files to preserve during restore (will be backed up and restored)
+PRESERVE_FILES=(".env" "custom.conf" "user-settings.json" "ssh_keys" "certificates")
+
 # Functions
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -159,7 +162,8 @@ decrypt_backup() {
 extract_backup() {
     log_info "Extracting backup..."
     
-    RESTORE_TEMP="/tmp/archon_restore_$$"
+    # Use disk-backed path instead of /tmp (which may be tmpfs)
+    RESTORE_TEMP="$BACKUP_PATH/.tmp/restore_$$"
     mkdir -p "$RESTORE_TEMP"
     
     cd "$RESTORE_TEMP"
@@ -188,7 +192,7 @@ stop_services() {
     log_info "Stopping Archon services..."
     
     cd "$UNRAID_DIR"
-    docker compose -f docker-compose.unraid.yml -f docker-compose.override.yml down
+    docker compose -p "${COMPOSE_PROJECT_NAME:-archon}" -f docker-compose.unraid.yml -f docker-compose.override.yml down
     
     # Wait for services to stop
     sleep 5
@@ -199,7 +203,8 @@ stop_services() {
 backup_current_data() {
     log_info "Creating safety backup of current data..."
     
-    SAFETY_BACKUP="/tmp/archon_safety_backup_$(date +%Y%m%d_%H%M%S)"
+    # Use disk-backed path instead of /tmp (which may be tmpfs)
+    SAFETY_BACKUP="$BACKUP_PATH/.tmp/safety_$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$SAFETY_BACKUP"
     
     # Backup current appdata
@@ -212,25 +217,54 @@ backup_current_data() {
         cp -r "$DATA_PATH" "$SAFETY_BACKUP/data_current"
     fi
     
+    # Preserve critical files that should be restored after the main restore
+    mkdir -p "$SAFETY_BACKUP/preserve"
+    log_info "Preserving critical configuration files..."
+    
+    for file in "${PRESERVE_FILES[@]}"; do
+        if [ -f "$APPDATA_PATH/$file" ]; then
+            cp "$APPDATA_PATH/$file" "$SAFETY_BACKUP/preserve/" 2>/dev/null && \
+                log_info "  • Preserved: $file"
+        elif [ -d "$APPDATA_PATH/$file" ]; then
+            cp -r "$APPDATA_PATH/$file" "$SAFETY_BACKUP/preserve/" 2>/dev/null && \
+                log_info "  • Preserved directory: $file"
+        fi
+    done
+    
     log_success "Safety backup created at $SAFETY_BACKUP"
-    echo "$SAFETY_BACKUP" > /tmp/archon_safety_backup_path
+    echo "$SAFETY_BACKUP" > "$BACKUP_PATH/.tmp/safety_backup_path"
 }
 
 restore_appdata() {
     log_info "Restoring application data..."
     
+    # Strict path safety guards
+    APPDATA_REAL=$(realpath "$APPDATA_PATH")
+    if [ -z "$APPDATA_REAL" ] || [ ! -d "$APPDATA_REAL" ] || [[ "$APPDATA_REAL" == "/" ]]; then
+        log_error "Invalid APPDATA_PATH: '$APPDATA_REAL' - refusing to delete"
+        exit 1
+    fi
+    
+    # Ensure path is within expected Unraid appdata location
+    if [[ "$APPDATA_REAL" != /mnt/user/appdata/archon* ]] && [[ "$APPDATA_REAL" != /mnt/cache/appdata/archon* ]]; then
+        log_error "Unsafe APPDATA_PATH: $APPDATA_REAL - must be within /mnt/user/appdata/archon* or /mnt/cache/appdata/archon*"
+        exit 1
+    fi
+    
     cd "$RESTORE_TEMP/$BACKUP_DIR"
     
     if [ -d "appdata" ]; then
-        # Clear existing appdata
-        rm -rf "$APPDATA_PATH"/*
+        # Clear existing appdata (now safe after strict checks)
+        rm -rf "$APPDATA_REAL"/*
         
         # Restore appdata
-        cp -r appdata/* "$APPDATA_PATH/"
+        cp -r appdata/* "$APPDATA_REAL/"
         
         # Set correct permissions
         if [ -f /etc/unraid-version ]; then
-            chown -R 99:100 "$APPDATA_PATH"
+            PUID_VALUE=${PUID:-99}
+            PGID_VALUE=${PGID:-100}
+            chown -R "$PUID_VALUE:$PGID_VALUE" "$APPDATA_REAL"
         fi
         
         log_success "Application data restored"
@@ -242,23 +276,65 @@ restore_appdata() {
 restore_documents() {
     log_info "Restoring documents..."
     
+    # Strict path safety guards
+    DATA_REAL=$(realpath "$DATA_PATH")
+    if [ -z "$DATA_REAL" ] || [ ! -d "$DATA_REAL" ] || [[ "$DATA_REAL" == "/" ]]; then
+        log_error "Invalid DATA_PATH: '$DATA_REAL' - refusing to delete"
+        exit 1
+    fi
+    
+    # Ensure path is within expected data location
+    if [[ "$DATA_REAL" != /mnt/user/archon-data* ]] && [[ "$DATA_REAL" != /mnt/cache/archon-data* ]]; then
+        log_error "Unsafe DATA_PATH: $DATA_REAL - must be within /mnt/user/archon-data* or /mnt/cache/archon-data*"
+        exit 1
+    fi
+    
     cd "$RESTORE_TEMP/$BACKUP_DIR"
     
     if [ -d "documents" ]; then
-        # Clear existing documents
-        rm -rf "$DATA_PATH"/*
+        # Clear existing documents (now safe after strict checks)
+        rm -rf "$DATA_REAL"/*
         
         # Restore documents
-        cp -r documents/* "$DATA_PATH/"
+        cp -r documents/* "$DATA_REAL/"
         
         # Set correct permissions
         if [ -f /etc/unraid-version ]; then
-            chown -R 99:100 "$DATA_PATH"
+            PUID_VALUE=${PUID:-99}
+            PGID_VALUE=${PGID:-100}
+            chown -R "$PUID_VALUE:$PGID_VALUE" "$DATA_REAL"
         fi
         
         log_success "Documents restored"
     else
         log_warning "No documents found in backup"
+    fi
+}
+
+restore_preserved_files() {
+    log_info "Restoring preserved configuration files..."
+    
+    if [ -f "$BACKUP_PATH/.tmp/safety_backup_path" ]; then
+        SAFETY_BACKUP=$(cat "$BACKUP_PATH/.tmp/safety_backup_path")
+        
+        if [ -d "$SAFETY_BACKUP/preserve" ]; then
+            # Restore preserved files over the restored backup
+            for file in "${PRESERVE_FILES[@]}"; do
+                if [ -f "$SAFETY_BACKUP/preserve/$file" ]; then
+                    cp "$SAFETY_BACKUP/preserve/$file" "$APPDATA_PATH/" 2>/dev/null && \
+                        log_info "  • Restored preserved file: $file"
+                elif [ -d "$SAFETY_BACKUP/preserve/$file" ]; then
+                    cp -r "$SAFETY_BACKUP/preserve/$file" "$APPDATA_PATH/" 2>/dev/null && \
+                        log_info "  • Restored preserved directory: $file"
+                fi
+            done
+            
+            log_success "Preserved files restored"
+        else
+            log_info "No preserved files to restore"
+        fi
+    else
+        log_warning "No safety backup path found - skipping preserved file restoration"
     fi
 }
 
@@ -280,13 +356,14 @@ restore_configuration() {
             # Merge with existing .env to preserve sensitive data
             if [ -f "$UNRAID_DIR/.env.backup" ]; then
                 # Extract sensitive variables from backup
-                grep -E "_KEY|_TOKEN|PASSWORD" "$UNRAID_DIR/.env.backup" > /tmp/sensitive_vars || true
+                TEMP_VARS="$BACKUP_PATH/.tmp/sensitive_vars_$$"
+                grep -E "_KEY|_TOKEN|PASSWORD" "$UNRAID_DIR/.env.backup" > "$TEMP_VARS" || true
                 
                 # Combine sanitized config with sensitive vars
                 cat "config/env_sanitized.txt" > "$UNRAID_DIR/.env"
-                cat /tmp/sensitive_vars >> "$UNRAID_DIR/.env"
+                cat "$TEMP_VARS" >> "$UNRAID_DIR/.env"
                 
-                rm /tmp/sensitive_vars
+                rm "$TEMP_VARS"
             fi
         fi
         
@@ -327,7 +404,7 @@ start_services() {
     log_info "Starting Archon services..."
     
     cd "$UNRAID_DIR"
-    docker compose -f docker-compose.unraid.yml -f docker-compose.override.yml up -d
+    docker compose -p "${COMPOSE_PROJECT_NAME:-archon}" -f docker-compose.unraid.yml -f docker-compose.override.yml up -d
     
     # Wait for services to start
     sleep 10
@@ -374,8 +451,8 @@ rollback_restoration() {
     stop_services
     
     # Restore from safety backup
-    if [ -f /tmp/archon_safety_backup_path ]; then
-        SAFETY_BACKUP=$(cat /tmp/archon_safety_backup_path)
+    if [ -f "$BACKUP_PATH/.tmp/safety_backup_path" ]; then
+        SAFETY_BACKUP=$(cat "$BACKUP_PATH/.tmp/safety_backup_path")
         
         if [ -d "$SAFETY_BACKUP" ]; then
             log_info "Restoring from safety backup..."
@@ -413,7 +490,12 @@ cleanup() {
     fi
     
     # Remove safety backup path file
-    rm -f /tmp/archon_safety_backup_path
+    rm -f "$BACKUP_PATH/.tmp/safety_backup_path"
+    
+    # Clean up entire .tmp directory if empty
+    if [ -d "$BACKUP_PATH/.tmp" ]; then
+        rmdir "$BACKUP_PATH/.tmp" 2>/dev/null || true
+    fi
     
     log_success "Cleanup completed"
 }
@@ -441,7 +523,7 @@ Service Status:
 $(docker ps --format "table {{.Names}}\t{{.Status}}" | grep archon)
 
 Notes:
-- Safety backup location: $(cat /tmp/archon_safety_backup_path 2>/dev/null || echo "N/A")
+- Safety backup location: $(cat "$BACKUP_PATH/.tmp/safety_backup_path" 2>/dev/null || echo "N/A")
 - Configuration may require re-entering sensitive data
 
 =====================================
@@ -458,16 +540,60 @@ main() {
     echo "========================================="
     echo ""
     
-    # Confirm restoration
+    # Enhanced confirmation process
     if [ "$2" != "--force" ]; then
-        echo "WARNING: This will replace all existing Archon data!"
-        echo -n "Are you sure you want to continue? (yes/no): "
-        read confirmation
+        echo ""
+        echo "🚨 DESTRUCTIVE OPERATION WARNING 🚨"
+        echo "======================================"
+        echo ""
+        echo "This restore operation will:"
+        echo "  • STOP all running Archon services"
+        echo "  • DELETE all current application data in:"
+        echo "    - $APPDATA_PATH"
+        echo "    - $DATA_PATH"
+        echo "  • REPLACE with backup data from:"
+        echo "    - ${BACKUP_FILE:-[to be selected]}"
+        echo ""
+        echo "📋 Safety measures included:"
+        echo "  • Current data will be backed up before deletion"
+        echo "  • Backup will be preserved for recovery if needed"
+        echo "  • Operation can be cancelled at any time"
+        echo ""
         
-        if [ "$confirmation" != "yes" ]; then
-            log_info "Restoration cancelled"
+        # Check if critical directories exist
+        if [ -d "$APPDATA_PATH" ] && [ "$(ls -A "$APPDATA_PATH" 2>/dev/null)" ]; then
+            echo "⚠️  EXISTING DATA DETECTED:"
+            APPDATA_SIZE=$(du -sh "$APPDATA_PATH" 2>/dev/null | cut -f1 || echo "unknown")
+            echo "  • AppData: $APPDATA_SIZE in $APPDATA_PATH"
+        fi
+        
+        if [ -d "$DATA_PATH" ] && [ "$(ls -A "$DATA_PATH" 2>/dev/null)" ]; then
+            DATA_SIZE=$(du -sh "$DATA_PATH" 2>/dev/null | cut -f1 || echo "unknown")
+            echo "  • Documents: $DATA_SIZE in $DATA_PATH"
+        fi
+        
+        echo ""
+        echo "Type 'DELETE AND RESTORE' to confirm (case sensitive):"
+        read -p "> " confirmation
+        
+        if [ "$confirmation" != "DELETE AND RESTORE" ]; then
+            log_info "Restoration cancelled - confirmation text did not match"
             exit 0
         fi
+        
+        # Second confirmation for extra safety
+        echo ""
+        echo "Final confirmation - type 'yes' to proceed:"
+        read -p "> " final_confirmation
+        
+        if [ "$final_confirmation" != "yes" ]; then
+            log_info "Restoration cancelled at final confirmation"
+            exit 0
+        fi
+        
+        log_info "Destructive restore operation confirmed by user"
+    else
+        log_warning "Force mode enabled - skipping safety confirmations"
     fi
     
     # Start restoration process
@@ -485,6 +611,7 @@ main() {
     restore_appdata
     restore_documents
     restore_configuration
+    restore_preserved_files
     restore_docker_images
     
     start_services

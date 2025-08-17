@@ -6,9 +6,9 @@ version: '3.9'
 services:
   archon-server:
     volumes:
-      - /mnt/user/appdata/archon/server:/appdata
-      - /mnt/user/archon-data:/data
-      - /mnt/user/appdata/archon/logs/server:/logs
+      - ${APPDATA_PATH}/server:/appdata
+      - ${DATA_PATH}:/data
+      - ${APPDATA_PATH}/logs/server:/logs
     environment:
       - PUID=${PUID:-99}
       - PGID=${PGID:-100}
@@ -27,10 +27,10 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILE:-3}"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8181/health || exit 1"]
+      test: ["CMD-SHELL", "python -c 'import sys,urllib.request; urllib.request.urlopen(\"http://localhost:8181/health\"); sys.exit(0)' || command -v curl >/dev/null && curl -fsS http://localhost:8181/health || (command -v wget >/dev/null && wget --spider -q http://localhost:8181/health) || exit 1"]
       interval: ${HEALTH_CHECK_INTERVAL:-30s}
       timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
       retries: ${HEALTH_CHECK_RETRIES:-3}
@@ -38,15 +38,17 @@ services:
 
   archon-mcp:
     volumes:
-      - /mnt/user/appdata/archon/mcp:/appdata
-      - /mnt/user/archon-data:/data:ro
-      - /mnt/user/appdata/archon/logs/mcp:/logs
+      - ${APPDATA_PATH}/mcp:/appdata
+      - ${DATA_PATH}:/data
+      - ${APPDATA_PATH}/logs/mcp:/logs
+      - ./scripts/wait-for-http.sh:/wait-for-http.sh:ro
     environment:
       - PUID=${PUID:-99}
       - PGID=${PGID:-100}
       - TZ=${TZ:-America/New_York}
     user: "${PUID:-99}:${PGID:-100}"
     restart: unless-stopped
+    command: ["/bin/sh", "-c", "/wait-for-http.sh http://archon-server:8181/health && exec python -m src.mcp.main"]
     # Deploy blocks are ignored by Docker Compose - use mem_limit/cpus instead
     # deploy:
     #   resources:
@@ -59,10 +61,10 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILE:-3}"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8051/health || exit 1"]
+      test: ["CMD-SHELL", "python -c 'import sys,urllib.request; urllib.request.urlopen(\"http://localhost:8051/health\"); sys.exit(0)' || command -v curl >/dev/null && curl -fsS http://localhost:8051/health || (command -v wget >/dev/null && wget --spider -q http://localhost:8051/health) || exit 1"]
       interval: ${HEALTH_CHECK_INTERVAL:-30s}
       timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
       retries: ${HEALTH_CHECK_RETRIES:-3}
@@ -70,15 +72,17 @@ services:
 
   archon-agents:
     volumes:
-      - /mnt/user/appdata/archon/agents:/appdata
-      - /mnt/user/archon-data:/data:ro
-      - /mnt/user/appdata/archon/logs/agents:/logs
+      - ${APPDATA_PATH}/agents:/appdata
+      - ${DATA_PATH}:/data
+      - ${APPDATA_PATH}/logs/agents:/logs
+      - ./scripts/wait-for-http.sh:/wait-for-http.sh:ro
     environment:
       - PUID=${PUID:-99}
       - PGID=${PGID:-100}
       - TZ=${TZ:-America/New_York}
     user: "${PUID:-99}:${PGID:-100}"
     restart: unless-stopped
+    command: ["/bin/sh", "-c", "/wait-for-http.sh http://archon-server:8181/health && exec python -m src.agents.main"]
     # Deploy blocks are ignored by Docker Compose - use mem_limit/cpus instead
     # deploy:
     #   resources:
@@ -91,10 +95,10 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILE:-3}"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8052/health || exit 1"]
+      test: ["CMD-SHELL", "python -c 'import sys,urllib.request; urllib.request.urlopen(\"http://localhost:8052/health\"); sys.exit(0)' || command -v curl >/dev/null && curl -fsS http://localhost:8052/health || (command -v wget >/dev/null && wget --spider -q http://localhost:8052/health) || exit 1"]
       interval: ${HEALTH_CHECK_INTERVAL:-30s}
       timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
       retries: ${HEALTH_CHECK_RETRIES:-3}
@@ -102,13 +106,21 @@ services:
 
   archon-frontend:
     volumes:
-      - /mnt/user/appdata/archon/frontend:/appdata
-      - /mnt/user/appdata/archon/logs/frontend:/logs
+      - ${APPDATA_PATH}/frontend:/appdata
+      - ${APPDATA_PATH}/logs/frontend:/logs
+      - ./scripts/wait-for-http.sh:/wait-for-http.sh:ro
     environment:
       - PUID=${PUID:-99}
       - PGID=${PGID:-100}
       - TZ=${TZ:-America/New_York}
+      # Runtime configuration for frontend connections
+      # These override the default internal Docker network addresses
+      # Uncomment and modify if accessing from outside the Docker network
+      # - VITE_API_URL=http://your-unraid-ip:8181
+      # - VITE_MCP_URL=http://your-unraid-ip:8051
+      # - VITE_AGENTS_URL=http://your-unraid-ip:8052
     restart: unless-stopped
+    command: ["/bin/sh", "-c", "/wait-for-http.sh http://archon-server:8181/health && /wait-for-http.sh http://archon-mcp:8051/health && /wait-for-http.sh http://archon-agents:8052/health && exec nginx -g 'daemon off;'"]
     # Deploy blocks are ignored by Docker Compose - use mem_limit/cpus instead
     # deploy:
     #   resources:
@@ -121,10 +133,10 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILE:-3}"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:80/ || exit 1"]
+      test: ["CMD-SHELL", "busybox wget --spider -q http://localhost/ || command -v curl >/dev/null && curl -fsS http://localhost/ || (command -v wget >/dev/null && wget --spider -q http://localhost/) || exit 1"]
       interval: ${HEALTH_CHECK_INTERVAL:-30s}
       timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
       retries: ${HEALTH_CHECK_RETRIES:-3}

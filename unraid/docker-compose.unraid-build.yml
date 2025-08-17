@@ -1,25 +1,41 @@
 version: '3.9'
 
-# Build-specific compose file for building from source
-# Use with: docker compose -f docker-compose.unraid.yml -f docker-compose.unraid-build.yml up --build
+# Build configuration for Archon services from local source
+# Use with: docker compose -f docker-compose.unraid.yml -f docker-compose.unraid-build.yml build
 
 services:
   archon-server:
     build:
       context: ../python
       dockerfile: Dockerfile.server
+      args:
+        - PYTHON_VERSION=3.12
+        - BUILD_ENV=production
+    image: ${REGISTRY_PREFIX:-ghcr.io/coleam00}/archon-server:latest
 
   archon-mcp:
     build:
       context: ../python
       dockerfile: Dockerfile.mcp
+      args:
+        - PYTHON_VERSION=3.12
+        - BUILD_ENV=production
+    image: ${REGISTRY_PREFIX:-ghcr.io/coleam00}/archon-mcp:latest
 
   archon-agents:
     build:
       context: ../python
       dockerfile: Dockerfile.agents
+      args:
+        - PYTHON_VERSION=3.12
+        - BUILD_ENV=production
+    image: ${REGISTRY_PREFIX:-ghcr.io/coleam00}/archon-agents:latest
 
   archon-frontend:
     build:
       context: ../archon-ui-main
-      dockerfile: Dockerfile
+      dockerfile: ../unraid/Dockerfile.frontend
+      args:
+        - NODE_VERSION=20
+        - BUILD_ENV=production
+    image: ${REGISTRY_PREFIX:-ghcr.io/coleam00}/archon-frontend:latest

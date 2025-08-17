@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Archon-Stack-Reference</Name>
+  <Repository>ghcr.io/coleam00/archon-frontend:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/coleam00/Archon/issues</Support>
+  <Project>https://github.com/coleam00/Archon</Project>
+  <Overview>REFERENCE ONLY - DO NOT USE DIRECTLY. This template shows the full configuration for the Archon stack but ONLY deploys the frontend container. For full stack deployment, use the deploy.sh script or install each component separately using the individual templates (archon-server, archon-mcp, archon-agents, archon-frontend).</Overview>
+  <Category>Productivity: Development:</Category>
+  <WebUI>http://[IP]:[PORT:3737]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/coleam00/Archon/main/unraid/templates/archon-stack-reference.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/coleam00/Archon/main/assets/icon-stack.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled></DateInstalled>
+  <DonateText>Support Archon Development</DonateText>
+  <DonateLink/>
+  <Requires>Supabase account with project configured. Docker Compose files must be placed in appdata directory.</Requires>
+  
+  <!-- Frontend Port -->
+  <Config Name="Frontend Port" Target="80" Default="3737" Mode="tcp" Description="Frontend web interface port" Type="Port" Display="always" Required="true" Mask="false">3737</Config>
+  
+  <!-- Main Storage Paths -->
+  <Config Name="AppData" Target="/appdata" Default="/mnt/user/appdata/archon" Mode="rw" Description="Application configuration and state storage for all services" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/archon</Config>
+  <Config Name="Data Storage" Target="/data" Default="/mnt/user/archon-data" Mode="rw" Description="Knowledge base and document storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/archon-data</Config>
+  <Config Name="Compose Files" Target="/compose" Default="/mnt/user/appdata/archon/compose" Mode="rw" Description="Docker Compose configuration files" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/archon/compose</Config>
+  
+  <!-- Required Configuration -->
+  <Config Name="SUPABASE_URL" Target="SUPABASE_URL" Default="" Mode="" Description="Supabase project URL (required) - format: https://xxxxx.supabase.co" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="SUPABASE_SERVICE_KEY" Target="SUPABASE_SERVICE_KEY" Default="" Mode="" Description="Supabase service role key (required) - starts with eyJ..." Type="Variable" Display="always" Required="true" Mask="true"/>
+  
+  <!-- Service Ports -->
+  <Config Name="SERVER_PORT" Target="SERVER_PORT" Default="8181" Mode="" Description="API server port" Type="Variable" Display="always" Required="false" Mask="false">8181</Config>
+  <Config Name="MCP_PORT" Target="MCP_PORT" Default="8051" Mode="" Description="MCP server port" Type="Variable" Display="always" Required="false" Mask="false">8051</Config>
+  <Config Name="AGENTS_PORT" Target="AGENTS_PORT" Default="8052" Mode="" Description="Agents server port" Type="Variable" Display="always" Required="false" Mask="false">8052</Config>
+  
+  <!-- Optional Configuration -->
+  <Config Name="OPENAI_API_KEY" Target="OPENAI_API_KEY" Default="" Mode="" Description="OpenAI API key for AI features (optional)" Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="LOG_LEVEL" Target="LOG_LEVEL" Default="INFO" Mode="" Description="Logging level: DEBUG, INFO, WARNING, ERROR" Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+  
+  <!-- System Configuration -->
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID for file permissions (99=nobody)" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID for file permissions (100=users)" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="TZ" Target="TZ" Default="America/New_York" Mode="" Description="Container timezone" Type="Variable" Display="advanced" Required="false" Mask="false">America/New_York</Config>
+  
+  <!-- Feature Flags -->
+  <Config Name="ENABLE_PROJECTS" Target="ENABLE_PROJECTS" Default="true" Mode="" Description="Enable project management features" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  
+  <!-- Observability -->
+  <Config Name="LOGFIRE_TOKEN" Target="LOGFIRE_TOKEN" Default="" Mode="" Description="Logfire observability token (optional)" Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  
+  <!-- Resource Limits -->
+  <Config Name="SERVER_MEMORY_LIMIT" Target="SERVER_MEMORY_LIMIT" Default="2G" Mode="" Description="Server memory limit" Type="Variable" Display="expert" Required="false" Mask="false">2G</Config>
+  <Config Name="MCP_MEMORY_LIMIT" Target="MCP_MEMORY_LIMIT" Default="1G" Mode="" Description="MCP server memory limit" Type="Variable" Display="expert" Required="false" Mask="false">1G</Config>
+  <Config Name="AGENTS_MEMORY_LIMIT" Target="AGENTS_MEMORY_LIMIT" Default="2G" Mode="" Description="Agents server memory limit" Type="Variable" Display="expert" Required="false" Mask="false">2G</Config>
+  <Config Name="FRONTEND_MEMORY_LIMIT" Target="FRONTEND_MEMORY_LIMIT" Default="512M" Mode="" Description="Frontend memory limit" Type="Variable" Display="expert" Required="false" Mask="false">512M</Config>
+</Container>

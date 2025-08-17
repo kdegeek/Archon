@@ -1,32 +1,33 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Archon-Frontend</Name>
-  <Repository>ghcr.io/archon/archon-frontend:latest</Repository>
+  <Repository>ghcr.io/coleam00/archon-frontend:latest</Repository>
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
   <MyIP/>
-  <Shell>bash</Shell>
+  <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/archon/archon/issues</Support>
-  <Project>https://github.com/archon/archon</Project>
-  <Overview>Archon Frontend - Web UI component of the Archon knowledge management system. Provides the main user interface for interacting with knowledge bases, projects, and AI tools. Requires Archon Server to be running.</Overview>
+  <Support>https://github.com/coleam00/Archon/issues</Support>
+  <Project>https://github.com/coleam00/Archon</Project>
+  <Overview>Archon Frontend - Web UI component of the Archon knowledge management system. Modern React-based interface for accessing and managing your knowledge base. Requires Archon Server to be running.</Overview>
   <Category>Productivity: Development:</Category>
   <WebUI>http://[IP]:[PORT:3737]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/archon/archon/main/unraid/templates/archon-frontend.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/archon/archon/main/assets/icon-frontend.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/coleam00/Archon/main/unraid/templates/archon-frontend.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/coleam00/Archon/main/assets/icon-frontend.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled></DateInstalled>
   <DonateText>Support Archon Development</DonateText>
   <DonateLink/>
-  <Requires>Archon Server running and accessible</Requires>
-  <Config Name="Web UI Port" Target="80" Default="3737" Mode="tcp" Description="Web interface access port (container serves on port 80)" Type="Port" Display="always" Required="true" Mask="false">3737</Config>
+  <Requires>Archon Server component running</Requires>
+  <Config Name="Web Port" Target="80" Default="3737" Mode="tcp" Description="Web UI port" Type="Port" Display="always" Required="true" Mask="false">3737</Config>
   <Config Name="AppData" Target="/appdata" Default="/mnt/user/appdata/archon/frontend" Mode="rw" Description="Frontend configuration storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/archon/frontend</Config>
   <Config Name="Logs" Target="/logs" Default="/mnt/user/appdata/archon/logs/frontend" Mode="rw" Description="Frontend log files" Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/archon/logs/frontend</Config>
+  <Config Name="API_URL" Target="VITE_API_URL" Default="http://archon-server:8181" Mode="" Description="Archon Server API URL (internal Docker network)" Type="Variable" Display="always" Required="true" Mask="false">http://archon-server:8181</Config>
+  <Config Name="MCP_URL" Target="VITE_MCP_URL" Default="http://archon-mcp:8051" Mode="" Description="MCP Server URL (internal Docker network)" Type="Variable" Display="always" Required="true" Mask="false">http://archon-mcp:8051</Config>
+  <Config Name="AGENTS_URL" Target="VITE_AGENTS_URL" Default="http://archon-agents:8052" Mode="" Description="Agents Service URL (internal Docker network)" Type="Variable" Display="always" Required="true" Mask="false">http://archon-agents:8052</Config>
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID for file permissions (99=nobody)" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID for file permissions (100=users)" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
   <Config Name="TZ" Target="TZ" Default="America/New_York" Mode="" Description="Container timezone" Type="Variable" Display="advanced" Required="false" Mask="false">America/New_York</Config>
-  <Config Name="NODE_ENV" Target="NODE_ENV" Default="production" Mode="" Description="Node.js environment mode" Type="Variable" Display="expert" Required="false" Mask="false">production</Config>
-  <Config Name="NGINX_WORKER_PROCESSES" Target="NGINX_WORKER_PROCESSES" Default="auto" Mode="" Description="Nginx worker process count" Type="Variable" Display="expert" Required="false" Mask="false">auto</Config>
 </Container>

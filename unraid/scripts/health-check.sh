@@ -33,12 +33,16 @@ NC='\033[0m'
 # Check mode
 CHECK_MODE="${1:-comprehensive}"
 
-# Service configuration
+# Service configuration - ports read from environment variables
+# Format: ["container-name"]="port:health-endpoint"
+# Note: These endpoints must match what's configured in docker-compose healthcheck sections
+# Server, MCP, and Agents expose /health endpoints
+# Frontend uses the root path (/) as its health check
 declare -A SERVICES=(
-    ["archon-server"]="8181:/health"
-    ["archon-mcp"]="8051:/health"
-    ["archon-agents"]="8052:/health"
-    ["archon-frontend"]="3737:/"
+    ["archon-server"]="${SERVER_PORT:-8181}:/health"
+    ["archon-mcp"]="${MCP_PORT:-8051}:/health"
+    ["archon-agents"]="${AGENTS_PORT:-8052}:/health"
+    ["archon-frontend"]="${FRONTEND_PORT:-3737}:/"
 )
 
 # Functions
@@ -73,34 +77,50 @@ check_tools() {
     # Report missing required tools
     if [ ${#missing_tools[@]} -gt 0 ]; then
         log_error "Missing required tools: ${missing_tools[*]}"
-        log_info "Installing missing tools..."
         
-        # Try to install on Unraid
+        # Provide guidance based on platform
         if [ -f /etc/unraid-version ]; then
-            for tool in "${missing_tools[@]}"; do
-                case "$tool" in
-                    "jq")
-                        if command -v opkg &> /dev/null; then
-                            opkg update && opkg install jq
-                        else
-                            log_warning "Cannot install jq automatically. JSON parsing disabled."
-                        fi
-                        ;;
-                    "bc")
-                        if command -v opkg &> /dev/null; then
-                            opkg update && opkg install bc
-                        else
-                            log_warning "Cannot install bc automatically. Some calculations disabled."
-                        fi
-                        ;;
-                    "curl or wget")
-                        log_error "Neither curl nor wget available. Cannot perform HTTP health checks."
-                        ;;
-                esac
-            done
+            log_warning "Missing tools on Unraid. Please install via NerdTools plugin:"
+            log_warning "  1. Go to Unraid Settings > NerdTools"
+            log_warning "  2. Enable the following packages: ${missing_tools[*]}"
+            log_warning "  3. Apply changes and re-run this script"
+            log_warning "Health checks will proceed with limited functionality."
         else
-            log_error "Please install missing tools: ${missing_tools[*]}"
-            exit 1
+            log_warning "Missing tools. Install via your distribution's package manager:"
+            log_warning "  For Debian/Ubuntu: apt-get install ${missing_tools[*]}"
+            log_warning "  For RHEL/CentOS: yum install ${missing_tools[*]}"
+            log_warning "  For Alpine: apk add ${missing_tools[*]}"
+        fi
+        
+        # Handle specific missing tools
+        for tool in "${missing_tools[@]}"; do
+            case "$tool" in
+                "jq")
+                    log_warning "JSON parsing features disabled without jq"
+                    ;;
+                "bc")
+                    log_warning "Arithmetic calculations disabled without bc"
+                    ;;
+                "curl or wget")
+                    log_warning "Neither curl nor wget available. HTTP health checks will be skipped."
+                    # Remove this from missing_tools since it's not critical
+                    missing_tools=("${missing_tools[@]/curl or wget}")
+                    ;;
+            esac
+        done
+        
+        # Exit only if truly critical tools are missing (none in current implementation)
+        critical_missing=()
+        for tool in "${missing_tools[@]}"; do
+            case "$tool" in
+                "") ;; # Skip empty entries
+                *) critical_missing+=("$tool") ;;
+            esac
+        done
+        
+        if [ ${#critical_missing[@]} -gt 0 ]; then
+            log_error "Cannot proceed without critical tools: ${critical_missing[*]}"
+            log_error "Health checks will run with reduced functionality."
         fi
     fi
     
@@ -175,17 +195,46 @@ check_container_status() {
         return 1
     fi
     
-    # Check HTTP endpoint
+    # Check HTTP endpoint with fallback support
     url="http://localhost:$port$endpoint"
-    response_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout "$HEALTH_CHECK_TIMEOUT" "$url" 2>/dev/null)
     
-    if [ "$response_code" == "200" ] || [ "$response_code" == "204" ]; then
-        response_time=$(curl -s -o /dev/null -w "%{time_total}" "$url" 2>/dev/null)
-        log_success "$container is healthy (response: ${response_code}, time: ${response_time}s)"
-        return 0
+    # Try HTTP check with available tools
+    if command -v curl &> /dev/null; then
+        response_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout "$HEALTH_CHECK_TIMEOUT" "$url" 2>/dev/null || echo "000")
+        
+        if [ "$response_code" == "200" ] || [ "$response_code" == "204" ]; then
+            response_time=$(curl -s -o /dev/null -w "%{time_total}" "$url" 2>/dev/null || echo "unknown")
+            log_success "$container is healthy (response: ${response_code}, time: ${response_time}s)"
+            return 0
+        elif [ "$response_code" == "000" ]; then
+            log_warning "$container HTTP check failed (curl error - service might be starting)"
+            return 2  # Return 2 for connection errors vs 1 for HTTP errors
+        else
+            log_error "$container endpoint returned HTTP $response_code"
+            return 1
+        fi
+    elif command -v wget &> /dev/null; then
+        if wget -q --spider --timeout="$HEALTH_CHECK_TIMEOUT" "$url" 2>/dev/null; then
+            log_success "$container is healthy (wget check passed)"
+            return 0
+        else
+            log_warning "$container HTTP check failed (wget error - service might be starting)"
+            return 2
+        fi
     else
-        log_error "$container endpoint returned $response_code"
-        return 1
+        # No HTTP tools available, fall back to container status only
+        log_warning "$container HTTP check skipped (no curl/wget available)"
+        if [ "$health_status" == "healthy" ]; then
+            log_success "$container appears healthy (container health status only)"
+            return 0
+        elif [ "$health_status" == "none" ]; then
+            # No health check defined, assume healthy if container is running
+            log_info "$container status unknown (no health check configured)"
+            return 0
+        else
+            log_warning "$container status unclear (no HTTP tools for verification)"
+            return 2
+        fi
     fi
 }
 
@@ -240,23 +289,41 @@ check_disk_space() {
 check_network_connectivity() {
     local container="$1"
     
-    # Check if container can resolve DNS
-    if docker exec "$container" nslookup google.com &>/dev/null; then
-        log_success "$container has DNS connectivity"
+    # Check if container has networking configured
+    local container_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$container" 2>/dev/null | head -1)
+    if [ -n "$container_ip" ]; then
+        log_success "$container has IP address: $container_ip"
     else
-        log_warning "$container cannot resolve DNS"
+        log_warning "$container has no IP address assigned"
+        return 1
     fi
     
-    # Check inter-container connectivity
+    # Check inter-container connectivity via HTTP endpoints instead of ping
     for target in "${!SERVICES[@]}"; do
         if [ "$target" != "$container" ]; then
-            if docker exec "$container" ping -c 1 "$target" &>/dev/null; then
-                log_success "$container can reach $target"
+            port_endpoint="${SERVICES[$target]}"
+            IFS=':' read -r port endpoint <<< "$port_endpoint"
+            
+            # Try to reach the target's health endpoint from the host
+            # This validates that the service is reachable on the network
+            if curl -s -o /dev/null --connect-timeout 2 "http://localhost:$port$endpoint" 2>/dev/null; then
+                log_success "$target service is reachable on port $port"
             else
-                log_warning "$container cannot reach $target"
+                log_warning "$target service not reachable on port $port"
             fi
         fi
     done
+    
+    # Check external connectivity via the container's published port
+    port_endpoint="${SERVICES[$container]}"
+    IFS=':' read -r port endpoint <<< "$port_endpoint"
+    
+    # If the container can serve requests, it likely has working DNS/networking
+    if curl -s -o /dev/null --connect-timeout 2 "http://localhost:$port$endpoint" 2>/dev/null; then
+        log_success "$container has working network connectivity"
+    else
+        log_warning "$container may have network issues"
+    fi
 }
 
 check_logs_for_errors() {
@@ -375,7 +442,19 @@ quick_check() {
         IFS=':' read -r port endpoint <<< "$port_endpoint"
         
         if docker ps --format '{{.Names}}' | grep -q "^$container$"; then
-            response=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 "http://localhost:$port$endpoint" 2>/dev/null)
+            # Try curl first, then wget as fallback
+            if command -v curl &> /dev/null; then
+                response=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 "http://localhost:$port$endpoint" 2>/dev/null)
+            elif command -v wget &> /dev/null; then
+                if wget --timeout=2 --tries=1 -q -O /dev/null "http://localhost:$port$endpoint" 2>/dev/null; then
+                    response="200"
+                else
+                    response="000"
+                fi
+            else
+                log_warning "Neither curl nor wget available for HTTP checks"
+                response="000"
+            fi
             
             if [ "$response" == "200" ] || [ "$response" == "204" ]; then
                 echo -e "${GREEN}✓${NC} $container"

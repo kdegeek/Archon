@@ -68,32 +68,33 @@ check_tools() {
         log_error "Missing required tools: ${missing_tools[*]}"
         log_info "Installing missing tools..."
         
-        # Try to install on Unraid
+        # Provide guidance based on platform
         if [ -f /etc/unraid-version ]; then
+            log_warning "Missing tools on Unraid. Please install via NerdTools plugin:"
+            log_warning "  1. Go to Unraid Settings > NerdTools"
+            log_warning "  2. Enable the following packages: ${missing_tools[*]}"
+            log_warning "  3. Apply changes and re-run this script"
+            log_warning "Maintenance will proceed with limited functionality."
+            
+            # Handle specific missing tools
             for tool in "${missing_tools[@]}"; do
                 case "$tool" in
                     "jq")
-                        if command -v opkg &> /dev/null; then
-                            opkg update && opkg install jq
-                        else
-                            log_warning "Cannot install jq automatically. JSON parsing disabled."
-                        fi
+                        log_warning "JSON parsing features disabled without jq"
                         ;;
                     "bc")
-                        if command -v opkg &> /dev/null; then
-                            opkg update && opkg install bc
-                        else
-                            log_warning "Cannot install bc automatically. Some calculations disabled."
-                        fi
+                        log_warning "Arithmetic calculations disabled without bc"
                         ;;
                     "curl or wget")
-                        log_error "Neither curl nor wget available. Cannot perform HTTP health checks."
+                        log_error "Neither curl nor wget available. Cannot perform HTTP checks."
                         ;;
                 esac
             done
         else
-            log_error "Please install missing tools: ${missing_tools[*]}"
-            exit 1
+            log_warning "Missing tools. Install via your distribution's package manager:"
+            log_warning "  For Debian/Ubuntu: apt-get install ${missing_tools[*]}"
+            log_warning "  For RHEL/CentOS: yum install ${missing_tools[*]}"
+            log_warning "  For Alpine: apk add ${missing_tools[*]}"
         fi
     fi
     
@@ -234,11 +235,15 @@ docker_cleanup() {
     if [ "$DOCKER_PRUNE" == "true" ]; then
         log_info "Performing Docker cleanup..."
         
+        # Get Docker root directory dynamically
+        docker_root=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || echo '/var/lib/docker')
+        
         # Get disk usage before cleanup
-        before_space=$(df /var/lib/docker | awk 'NR==2 {print $3}')
+        before_space=$(df "$docker_root" | awk 'NR==2 {print $3}')
         
         # Remove stopped containers
-        stopped_containers=$(docker ps -a -q -f status=exited -f label=com.docker.compose.project=archon)
+        PROJECT_NAME="${COMPOSE_PROJECT_NAME:-archon}"
+        stopped_containers=$(docker ps -a -q -f status=exited -f label=com.docker.compose.project=$PROJECT_NAME)
         if [ -n "$stopped_containers" ]; then
             docker rm $stopped_containers
             log_info "Removed stopped containers"
@@ -254,7 +259,7 @@ docker_cleanup() {
         docker network prune -f
         
         # Get disk usage after cleanup
-        after_space=$(df /var/lib/docker | awk 'NR==2 {print $3}')
+        after_space=$(df "$docker_root" | awk 'NR==2 {print $3}')
         freed_space=$((before_space - after_space))
         
         if [ $freed_space -gt 0 ]; then
@@ -272,17 +277,23 @@ update_containers() {
         
         cd "$UNRAID_DIR"
         
+        # Ensure REGISTRY_PREFIX is available
+        if [ -f "$UNRAID_DIR/.env" ]; then
+            source "$UNRAID_DIR/.env"
+        fi
+        REGISTRY_PREFIX="${REGISTRY_PREFIX:-ghcr.io/coleam00}"
+        
         # Pull latest images
         updated=false
         for image in archon-server archon-mcp archon-agents archon-frontend; do
             log_info "Checking $image for updates..."
             
             # Get current image ID
-            current_id=$(docker images --format "{{.ID}}" "ghcr.io/archon/$image:latest" 2>/dev/null)
+            current_id=$(docker images --format "{{.ID}}" "${REGISTRY_PREFIX}/${image}:latest" 2>/dev/null)
             
             # Try to pull latest
-            if docker pull "ghcr.io/archon/$image:latest" 2>/dev/null; then
-                new_id=$(docker images --format "{{.ID}}" "ghcr.io/archon/$image:latest")
+            if docker pull "${REGISTRY_PREFIX}/${image}:latest" 2>/dev/null; then
+                new_id=$(docker images --format "{{.ID}}" "${REGISTRY_PREFIX}/${image}:latest")
                 
                 if [ "$current_id" != "$new_id" ]; then
                     log_info "Update available for $image"
@@ -298,10 +309,12 @@ update_containers() {
             "$SCRIPT_DIR/backup.sh" incremental
             
             # Recreate containers with new images
-            docker compose -f docker-compose.unraid.yml -f docker-compose.override.yml up -d --force-recreate
+            docker compose -p "${COMPOSE_PROJECT_NAME:-archon}" -f docker-compose.unraid.yml -f docker-compose.override.yml up -d --force-recreate
             
             log_success "Containers updated successfully"
-            send_notification "Archon Updated" "Containers have been updated to latest versions" "normal"
+            if [ "${NOTIFY_ON_UPDATE:-true}" = "true" ]; then
+                send_notification "Archon Updated" "Containers have been updated to latest versions" "normal"
+            fi
         else
             log_info "All containers are up to date"
         fi
@@ -351,7 +364,9 @@ check_storage() {
     available_kb=$(df "$APPDATA_PATH" 2>/dev/null | awk 'NR==2 {print $4}')
     if [ "$available_kb" -lt 1048576 ]; then # Less than 1GB
         log_warning "Low disk space warning: $available_space remaining"
-        send_notification "Archon Low Disk Space" "Less than 1GB of space remaining" "warning"
+        if [ "${NOTIFY_ON_ERROR:-true}" = "true" ]; then
+            send_notification "Archon Low Disk Space" "Less than 1GB of space remaining" "warning"
+        fi
     fi
 }
 
@@ -366,13 +381,17 @@ security_check() {
     
     # Check file permissions
     if [ -f /etc/unraid-version ]; then
-        # Check for files not owned by nobody:users
-        wrong_perms=$(find "$APPDATA_PATH" ! -user 99 -o ! -group 100 2>/dev/null | wc -l)
+        # Get PUID/PGID from environment
+        PUID_VALUE=${PUID:-99}
+        PGID_VALUE=${PGID:-100}
+        
+        # Check for files not owned by configured user:group
+        wrong_perms=$(find "$APPDATA_PATH" ! -user "$PUID_VALUE" -o ! -group "$PGID_VALUE" 2>/dev/null | wc -l)
         if [ "$wrong_perms" -gt 0 ]; then
             log_warning "Found $wrong_perms files with incorrect permissions"
             log_info "Fixing file permissions..."
-            chown -R 99:100 "$APPDATA_PATH" 2>/dev/null || true
-            chown -R 99:100 "$DATA_PATH" 2>/dev/null || true
+            chown -R "$PUID_VALUE:$PGID_VALUE" "$APPDATA_PATH" 2>/dev/null || true
+            chown -R "$PUID_VALUE:$PGID_VALUE" "$DATA_PATH" 2>/dev/null || true
         fi
     fi
     
@@ -396,9 +415,9 @@ performance_tuning() {
     for container in archon-server archon-mcp archon-agents archon-frontend; do
         if docker ps --format '{{.Names}}' | grep -q "^$container$"; then
             # Get container stats
-            stats=$(docker stats --no-stream --format "json" "$container" 2>/dev/null)
+            stats=$(docker stats --no-stream --format '{{json .}}' "$container" 2>/dev/null)
             
-            if [ -n "$stats" ]; then
+            if [ -n "$stats" ] && command -v jq &> /dev/null; then
                 cpu_percent=$(echo "$stats" | jq -r '.CPUPerc' | sed 's/%//')
                 mem_usage=$(echo "$stats" | jq -r '.MemUsage' | cut -d'/' -f1)
                 
@@ -529,9 +548,13 @@ main() {
     
     # Send notification based on results
     if check_service_health; then
-        send_notification "Archon Maintenance Complete" "All systems healthy. Mode: $MAINTENANCE_MODE" "normal"
+        if [ "${NOTIFY_ON_UPDATE:-true}" = "true" ]; then
+            send_notification "Archon Maintenance Complete" "All systems healthy. Mode: $MAINTENANCE_MODE" "normal"
+        fi
     else
-        send_notification "Archon Maintenance Alert" "Some services require attention. Check logs." "warning"
+        if [ "${NOTIFY_ON_ERROR:-true}" = "true" ]; then
+            send_notification "Archon Maintenance Alert" "Some services require attention. Check logs." "warning"
+        fi
     fi
 }
 
